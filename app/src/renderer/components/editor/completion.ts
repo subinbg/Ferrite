@@ -6,6 +6,14 @@ export interface SchemaContext {
   columnsByTable: Record<string, ColumnInfo[]>
 }
 
+// ---- Module-level schema ref, updated by SqlEditor on every render ----
+let currentSchema: SchemaContext | null = null
+
+export function setSchemaContext(schema: SchemaContext | null): void {
+  currentSchema = schema
+}
+
+// ---- SQL keywords ----
 const SQL_KEYWORDS = [
   'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'EXISTS', 'BETWEEN',
   'LIKE', 'ILIKE', 'IS', 'NULL', 'AS', 'ON', 'JOIN', 'LEFT', 'RIGHT', 'INNER',
@@ -24,15 +32,20 @@ const SQL_KEYWORDS = [
   'EXPLAIN', 'ANALYZE', 'VERBOSE', 'FORMAT',
 ]
 
-export function createCompletionProvider(
-  getSchema: () => SchemaContext | null
-): monaco.languages.CompletionItemProvider {
-  return {
+// ---- Global registration (called once from monaco-setup.ts) ----
+let registered = false
+
+export function registerCompletionProvider(): void {
+  if (registered) return
+  registered = true
+
+  monaco.languages.registerCompletionItemProvider('sql', {
     triggerCharacters: ['.', ':'],
+
     provideCompletionItems(
       model: monaco.editor.ITextModel,
       position: monaco.Position
-    ): monaco.languages.ProviderResult<monaco.languages.CompletionList> {
+    ): monaco.languages.CompletionList {
       const word = model.getWordUntilPosition(position)
       const range = new monaco.Range(
         position.lineNumber,
@@ -40,6 +53,8 @@ export function createCompletionProvider(
         position.lineNumber,
         word.endColumn
       )
+
+      console.log('[Ferrite] Completion called:', { word: word.word, hasSchema: currentSchema !== null, tables: currentSchema?.tables?.length ?? 0 })
 
       const textUntilPosition = model.getValueInRange({
         startLineNumber: 1,
@@ -49,7 +64,7 @@ export function createCompletionProvider(
       })
 
       const suggestions: monaco.languages.CompletionItem[] = []
-      const schema = getSchema()
+      const schema = currentSchema
 
       // 1) After a dot: table.column completion
       const dotMatch = textUntilPosition.match(/(\w+)\.\w*$/)
@@ -89,7 +104,7 @@ export function createCompletionProvider(
         return { suggestions }
       }
 
-      // 3) Always: SQL keywords (let Monaco do the fuzzy filtering)
+      // 3) SQL keywords — always present, Monaco does the fuzzy filtering
       for (const kw of SQL_KEYWORDS) {
         suggestions.push({
           label: kw,
@@ -133,5 +148,5 @@ export function createCompletionProvider(
 
       return { suggestions }
     }
-  }
+  })
 }

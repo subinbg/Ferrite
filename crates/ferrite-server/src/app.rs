@@ -23,10 +23,17 @@ async fn health(State(state): State<AppState>) -> axum::Json<serde_json::Value> 
 }
 
 pub fn create_router(state: AppState, standalone: bool) -> Router {
+    // Restrict CORS to localhost only — Ferrite binds to 127.0.0.1
     let cors = CorsLayer::new()
         .allow_methods(Any)
         .allow_headers(Any)
-        .allow_origin(Any);
+        .allow_origin([
+            "http://127.0.0.1".parse().unwrap(),
+            "http://localhost".parse().unwrap(),
+            // Vite dev server
+            "http://localhost:5173".parse().unwrap(),
+            "http://127.0.0.1:5173".parse().unwrap(),
+        ]);
 
     let connection_routes = Router::new()
         .route("/", get(connections::list_connections).post(connections::create_connection))

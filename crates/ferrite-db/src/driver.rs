@@ -70,10 +70,11 @@ impl DatabaseDriver {
         bind_variables: &HashMap<String, serde_json::Value>,
         limit: usize,
         offset: usize,
+        timeout_seconds: u64,
     ) -> Result<QueryResult, FerriteError> {
         match self {
-            Self::Postgres(d) => d.execute(sql, bind_variables, limit, offset).await,
-            Self::Sqlite(d) => d.execute(sql, bind_variables, limit, offset).await,
+            Self::Postgres(d) => d.execute(sql, bind_variables, limit, offset, timeout_seconds).await,
+            Self::Sqlite(d) => d.execute(sql, bind_variables, limit, offset, timeout_seconds).await,
         }
     }
 

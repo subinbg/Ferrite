@@ -119,22 +119,21 @@ impl SqliteDriver {
         bind_variables: &HashMap<String, serde_json::Value>,
         limit: usize,
         offset: usize,
+        timeout_seconds: u64,
     ) -> Result<QueryResult, FerriteError> {
         let execution_id = Uuid::new_v4();
         let start = Instant::now();
 
-        // SQLite supports :name natively, but we use positional ? for consistency
-        let (processed_sql, ordered_values) = process_bind_variables_sqlite(sql, bind_variables)?;
+        let processed_sql = process_bind_variables_sqlite(sql, bind_variables)?;
 
-        let mut query = sqlx::query(&processed_sql);
-        for val in &ordered_values {
-            query = bind_json_value_sqlite(query, val);
-        }
-
-        let rows = query
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| FerriteError::Database(e.to_string()))?;
+        let timeout = std::time::Duration::from_secs(if timeout_seconds > 0 { timeout_seconds } else { 30 });
+        let rows = tokio::time::timeout(
+            timeout,
+            sqlx::query(&processed_sql).fetch_all(&self.pool),
+        )
+        .await
+        .map_err(|_| FerriteError::QueryTimeout(timeout.as_secs()))?
+        .map_err(|e| FerriteError::Database(e.to_string()))?;
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -187,15 +186,10 @@ impl SqliteDriver {
         sql: &str,
         bind_variables: &HashMap<String, serde_json::Value>,
     ) -> Result<ExplainResult, FerriteError> {
-        let (processed_sql, ordered_values) = process_bind_variables_sqlite(sql, bind_variables)?;
+        let processed_sql = process_bind_variables_sqlite(sql, bind_variables)?;
         let explain_sql = format!("EXPLAIN QUERY PLAN {processed_sql}");
 
-        let mut query = sqlx::query(&explain_sql);
-        for val in &ordered_values {
-            query = bind_json_value_sqlite(query, val);
-        }
-
-        let rows = query
+        let rows = sqlx::query(&explain_sql)
             .fetch_all(&self.pool)
             .await
             .map_err(|e| FerriteError::Database(e.to_string()))?;
@@ -223,25 +217,23 @@ impl SqliteDriver {
     }
 }
 
+/// Replace :name bind variables with literal SQL values (same approach as PostgreSQL driver).
 fn process_bind_variables_sqlite(
     sql: &str,
     binds: &HashMap<String, serde_json::Value>,
-) -> Result<(String, Vec<serde_json::Value>), FerriteError> {
+) -> Result<String, FerriteError> {
     if binds.is_empty() {
-        return Ok((sql.to_string(), vec![]));
+        return Ok(sql.to_string());
     }
 
     let mut result = sql.to_string();
-    let mut ordered_values = Vec::new();
-
     let re = regex_lite::Regex::new(r":([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
     let mut replacements = Vec::new();
 
     for cap in re.captures_iter(sql) {
         let name = &cap[1];
         if let Some(value) = binds.get(name) {
-            replacements.push((cap.get(0).unwrap().range(), "?".to_string()));
-            ordered_values.push(value.clone());
+            replacements.push((cap.get(0).unwrap().range(), json_to_sql_literal_sqlite(value)));
         }
     }
 
@@ -249,27 +241,22 @@ fn process_bind_variables_sqlite(
         result.replace_range(range, &replacement);
     }
 
-    Ok((result, ordered_values))
+    Ok(result)
 }
 
-fn bind_json_value_sqlite<'q>(
-    query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
-    value: &'q serde_json::Value,
-) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
+fn json_to_sql_literal_sqlite(value: &serde_json::Value) -> String {
     match value {
-        serde_json::Value::Null => query.bind(None::<String>),
-        serde_json::Value::Bool(b) => query.bind(*b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                query.bind(i)
-            } else if let Some(f) = n.as_f64() {
-                query.bind(f)
-            } else {
-                query.bind(n.to_string())
-            }
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::Bool(b) => if *b { "1" } else { "0" }.to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => {
+            let escaped = s.replace('\'', "''");
+            format!("'{escaped}'")
         }
-        serde_json::Value::String(s) => query.bind(s.as_str()),
-        other => query.bind(other.to_string()),
+        other => {
+            let escaped = other.to_string().replace('\'', "''");
+            format!("'{escaped}'")
+        }
     }
 }
 

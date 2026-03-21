@@ -21,7 +21,7 @@ pub async fn execute_query(
     let dialect = driver.dialect().to_string();
 
     let result = driver
-        .execute(&req.sql, &req.bind_variables, req.limit, req.offset)
+        .execute(&req.sql, &req.bind_variables, req.limit, req.offset, req.timeout_seconds)
         .await;
 
     // Record in history

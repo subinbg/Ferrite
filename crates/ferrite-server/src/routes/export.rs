@@ -20,7 +20,7 @@ pub async fn export_data(
         .ok_or((StatusCode::BAD_REQUEST, "Not connected".to_string()))?;
 
     let result = driver
-        .execute(&req.sql, &std::collections::HashMap::new(), 1_000_000, 0)
+        .execute(&req.sql, &std::collections::HashMap::new(), 1_000_000, 0, 120)
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 

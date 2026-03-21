@@ -26,6 +26,7 @@ pub struct NewVersion {
 
 #[derive(Debug, serde::Deserialize)]
 pub struct VersionUpdate {
+    pub title: Option<String>,
     pub label: Option<String>,
     pub notes: Option<String>,
 }
@@ -106,8 +107,8 @@ impl AppStore {
 
     pub fn update_version(&self, id: &str, update: &VersionUpdate) -> Result<VersionRecord, StoreError> {
         self.conn().execute(
-            "UPDATE query_versions SET label = COALESCE(?1, label), notes = COALESCE(?2, notes) WHERE id = ?3",
-            rusqlite::params![update.label, update.notes, id],
+            "UPDATE query_versions SET title = COALESCE(?1, title), label = COALESCE(?2, label), notes = COALESCE(?3, notes) WHERE id = ?4",
+            rusqlite::params![update.title, update.label, update.notes, id],
         )?;
         self.get_version(id)
     }

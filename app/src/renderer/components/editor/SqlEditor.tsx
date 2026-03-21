@@ -3,16 +3,26 @@ import { monaco } from '../../lib/monaco-setup'
 import { useTabsStore } from '../../stores/tabs'
 import { useResultsStore } from '../../stores/results'
 import { useExecuteQuery, useExplainQuery } from '../../api/queries'
-import { useConnections } from '../../api/connections'
 import { useFullSchema } from '../../api/schema'
 import { useThemeStore } from '../../stores/theme'
-import { createCompletionProvider, type SchemaContext } from './completion'
+import { setSchemaContext, registerCompletionProvider, type SchemaContext } from './completion'
 import { setupLinting } from './linting'
 import { registerFerriteThemes } from './theme'
 import { registerSqlTokenizer } from './tokenizer'
 
-// Register themes + tokenizer once
-let themesRegistered = false
+// Global flag: register language features ONCE, AFTER first editor creation, NEVER dispose
+let languageFeaturesRegistered = false
+
+function ensureLanguageFeatures(): void {
+  if (languageFeaturesRegistered) return
+  languageFeaturesRegistered = true
+
+  // Order: tokenizer → themes → completion (tokenizer must override Monaco's lazy-loaded built-in)
+  registerSqlTokenizer()
+  registerFerriteThemes()
+  registerCompletionProvider()
+  console.log('[Ferrite] Language features registered (tokenizer + themes + completion)')
+}
 
 // Track per-tab models so undo history is preserved
 const tabModels = new Map<string, monaco.editor.ITextModel>()
@@ -44,11 +54,9 @@ export function SqlEditor(): JSX.Element {
   const setExplainResult = useResultsStore((s) => s.setExplainResult)
   const setError = useResultsStore((s) => s.setError)
 
-  // Schema for autocomplete — only fetch when connection is active
+  // Schema for autocomplete — fetch whenever a connection is selected on the tab
   const connectedId = activeTab?.connectionId ?? null
-  const { data: connections } = useConnections()
-  const isConnected = connections?.some((c) => c.id === connectedId && c.connected) ?? false
-  const { data: fullSchema } = useFullSchema(connectedId, isConnected)
+  const { data: fullSchema, error: schemaError } = useFullSchema(connectedId)
 
   const schemaContext = useMemo((): SchemaContext | null => {
     if (!fullSchema) return null
@@ -58,36 +66,41 @@ export function SqlEditor(): JSX.Element {
     }
   }, [fullSchema])
 
-  const schemaRef = useRef(schemaContext)
-  schemaRef.current = schemaContext
+  // Update global schema ref on every render
+  setSchemaContext(schemaContext)
 
-  // Execute handler
-  const handleExecute = useCallback(async () => {
+  // Log for debugging
+  console.log('[Ferrite] Schema state:', {
+    connectedId,
+    tables: fullSchema?.tables?.length ?? 0,
+    columns: Object.keys(fullSchema?.columns_by_table ?? {}).length,
+    schemaError: schemaError ? String(schemaError) : null,
+  })
+
+  // Execute/explain handlers via refs
+  const executeRef = useRef<() => void>(() => {})
+  const explainRef = useRef<() => void>(() => {})
+
+  executeRef.current = useCallback(async () => {
     if (!activeTab?.connectionId) return
     const sql = editorRef.current?.getValue()?.trim()
     if (!sql) return
     setExecuting(activeTab.id, true)
     try {
-      const qr = await executeMutation.mutateAsync({
-        connection_id: activeTab.connectionId,
-        sql
-      })
+      const qr = await executeMutation.mutateAsync({ connection_id: activeTab.connectionId, sql })
       setQueryResult(activeTab.id, qr)
     } catch (err: any) {
       setError(activeTab.id, err.message)
     }
   }, [activeTab?.id, activeTab?.connectionId])
 
-  const handleExplain = useCallback(async () => {
+  explainRef.current = useCallback(async () => {
     if (!activeTab?.connectionId) return
     const sql = editorRef.current?.getValue()?.trim()
     if (!sql) return
     setExecuting(activeTab.id, true)
     try {
-      const er = await explainMutation.mutateAsync({
-        connection_id: activeTab.connectionId,
-        sql
-      })
+      const er = await explainMutation.mutateAsync({ connection_id: activeTab.connectionId, sql })
       setExplainResult(activeTab.id, er)
     } catch (err: any) {
       setError(activeTab.id, err.message)
@@ -97,12 +110,6 @@ export function SqlEditor(): JSX.Element {
   // Create editor on mount
   useEffect(() => {
     if (!containerRef.current) return
-
-    // Register themes once (before editor creation is fine for themes)
-    if (!themesRegistered) {
-      registerFerriteThemes()
-      themesRegistered = true
-    }
 
     const editor = monaco.editor.create(containerRef.current, {
       theme: `ferrite-${resolvedTheme}`,
@@ -126,7 +133,7 @@ export function SqlEditor(): JSX.Element {
       formatOnPaste: true,
       formatOnType: true,
       suggest: {
-        showKeywords: false,
+        showKeywords: true,
         showSnippets: false,
         insertMode: 'replace',
         filterGraceful: true,
@@ -134,70 +141,48 @@ export function SqlEditor(): JSX.Element {
       quickSuggestions: {
         other: true,
         strings: false,
-        comments: false
+        comments: false,
       },
       suggestOnTriggerCharacters: true,
       wordBasedSuggestions: 'currentDocument',
-      acceptSuggestionOnEnter: 'on'
+      acceptSuggestionOnEnter: 'on',
     })
 
     editorRef.current = editor
 
-    // Register tokenizer AFTER editor creation — Monaco lazy-loads built-in SQL
-    // when the editor is created, so we must override it afterward.
-    registerSqlTokenizer()
+    // Register language features AFTER editor creation (so Monaco has initialized the SQL language)
+    // This only runs once globally — the provider is never disposed
+    ensureLanguageFeatures()
 
-    // Re-apply tokenizer to all existing models
-    for (const model of monaco.editor.getModels()) {
-      if (model.getLanguageId() === 'sql') {
-        monaco.editor.setModelLanguage(model, 'sql')
-      }
-    }
-
-    // Register completion provider
-    const completionDisposable = monaco.languages.registerCompletionItemProvider(
-      'sql',
-      createCompletionProvider(() => schemaRef.current)
-    )
-
-    // Setup linting
     const cleanupLinting = setupLinting(editor)
 
-    // Keybindings
     editor.addAction({
       id: 'ferrite.execute',
       label: 'Execute Query',
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-      run: () => { handleExecute() }
+      run: () => { executeRef.current() }
     })
-
     editor.addAction({
       id: 'ferrite.explain',
       label: 'Explain Query',
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter],
-      run: () => { handleExplain() }
+      run: () => { explainRef.current() }
     })
 
     return () => {
-      completionDisposable.dispose()
+      // Only dispose the editor and linting — NOT the completion provider (it's global)
       cleanupLinting()
       editor.dispose()
       editorRef.current = null
     }
-  }, []) // Mount once
+  }, [])
 
-  // Switch Monaco theme when app theme changes
+  // Switch Monaco theme
   useEffect(() => {
     if (editorRef.current) {
       monaco.editor.setTheme(`ferrite-${resolvedTheme}`)
     }
   }, [resolvedTheme])
-
-  // Update execute/explain handlers when tab changes (via refs would be better, but actions are re-registered)
-  const executeRef = useRef(handleExecute)
-  executeRef.current = handleExecute
-  const explainRef = useRef(handleExplain)
-  explainRef.current = handleExplain
 
   // Switch model when active tab changes
   useEffect(() => {
@@ -209,12 +194,6 @@ export function SqlEditor(): JSX.Element {
       editor.setModel(model)
     }
 
-    // Ensure the model has the sql language set (for tokenizer + completions)
-    if (model.getLanguageId() !== 'sql') {
-      monaco.editor.setModelLanguage(model, 'sql')
-    }
-
-    // Sync model changes back to store
     const disposable = model.onDidChangeContent(() => {
       updateTabSql(activeTab.id, model.getValue())
     })
@@ -228,25 +207,11 @@ export function SqlEditor(): JSX.Element {
 
   if (!activeTab) {
     return (
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--muted-foreground)',
-          fontSize: '13px'
-        }}
-      >
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted-foreground)', fontSize: '13px' }}>
         Open a query tab to start
       </div>
     )
   }
 
-  return (
-    <div
-      ref={containerRef}
-      style={{ height: '100%', width: '100%' }}
-    />
-  )
+  return <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
 }

@@ -6,20 +6,23 @@ import { useConnections, useConnectConnection } from '../../api/connections'
 import { useExecuteQuery, useExplainQuery } from '../../api/queries'
 import { ExportDialog } from '../results/ExportDialog'
 import { SaveDialog } from '../history/SaveDialog'
+import { BindVariablesDialog, extractBindVariables } from './BindVariablesDialog'
 
 export function EditorToolbar(): JSX.Element {
   const [showExport, setShowExport] = useState(false)
   const [showSave, setShowSave] = useState(false)
+  const [showBindVars, setShowBindVars] = useState<'execute' | 'explain' | null>(null)
   const activeTabId = useTabsStore((s) => s.activeTabId)
 
-  // Listen for Cmd+S save event
   useEffect(() => {
     const handler = () => setShowSave(true)
     window.addEventListener('ferrite:save-query', handler)
     return () => window.removeEventListener('ferrite:save-query', handler)
   }, [])
+
   const tabs = useTabsStore((s) => s.tabs)
   const updateTabConnection = useTabsStore((s) => s.updateTabConnection)
+  const updateTabBindVariables = useTabsStore((s) => s.updateTabBindVariables)
   const activeTab = tabs.find((t) => t.id === activeTabId)
 
   const { data: connections } = useConnections()
@@ -33,7 +36,6 @@ export function EditorToolbar(): JSX.Element {
   const setError = useResultsStore((s) => s.setError)
   const result = useResultsStore((s) => s.getResult(activeTabId ?? ''))
 
-  // Ensure connection is active before executing
   const ensureConnected = async (connectionId: string): Promise<boolean> => {
     const conn = connections?.find((c) => c.id === connectionId)
     if (!conn) return false
@@ -47,16 +49,26 @@ export function EditorToolbar(): JSX.Element {
     }
   }
 
-  const handleExecute = async () => {
-    if (!activeTab?.connectionId || !activeTab.sql.trim()) return
+  const executeWithBinds = async (bindValues: Record<string, string>) => {
+    if (!activeTab?.connectionId) return
+    // Save bind values to tab store for reuse
+    updateTabBindVariables(activeTab.id, bindValues)
+    setShowBindVars(null)
     setExecuting(activeTab.id, true)
 
     if (!(await ensureConnected(activeTab.connectionId))) return
 
+    // Convert string values to JSON values (try to parse numbers/booleans)
+    const bindVariables: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(bindValues)) {
+      bindVariables[k] = parseBindValue(v)
+    }
+
     try {
       const qr = await executeMutation.mutateAsync({
         connection_id: activeTab.connectionId,
-        sql: activeTab.sql
+        sql: activeTab.sql,
+        bind_variables: bindVariables,
       })
       setQueryResult(activeTab.id, qr)
     } catch (err: any) {
@@ -64,16 +76,24 @@ export function EditorToolbar(): JSX.Element {
     }
   }
 
-  const handleExplain = async () => {
-    if (!activeTab?.connectionId || !activeTab.sql.trim()) return
+  const explainWithBinds = async (bindValues: Record<string, string>) => {
+    if (!activeTab?.connectionId) return
+    updateTabBindVariables(activeTab.id, bindValues)
+    setShowBindVars(null)
     setExecuting(activeTab.id, true)
 
     if (!(await ensureConnected(activeTab.connectionId))) return
 
+    const bindVariables: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(bindValues)) {
+      bindVariables[k] = parseBindValue(v)
+    }
+
     try {
       const er = await explainMutation.mutateAsync({
         connection_id: activeTab.connectionId,
-        sql: activeTab.sql
+        sql: activeTab.sql,
+        bind_variables: bindVariables,
       })
       setExplainResult(activeTab.id, er)
     } catch (err: any) {
@@ -81,14 +101,33 @@ export function EditorToolbar(): JSX.Element {
     }
   }
 
+  const handleRun = () => {
+    if (!activeTab?.connectionId || !activeTab.sql.trim()) return
+    const params = extractBindVariables(activeTab.sql)
+    if (params.length > 0) {
+      setShowBindVars('execute')
+    } else {
+      executeWithBinds({})
+    }
+  }
+
+  const handleExplain = () => {
+    if (!activeTab?.connectionId || !activeTab.sql.trim()) return
+    const params = extractBindVariables(activeTab.sql)
+    if (params.length > 0) {
+      setShowBindVars('explain')
+    } else {
+      explainWithBinds({})
+    }
+  }
+
   if (!activeTab) return <div style={barStyle} />
 
-  // Show ALL connections, mark connected ones
   const allConns = connections ?? []
+  const bindParams = activeTab.sql ? extractBindVariables(activeTab.sql) : []
 
   return (
     <div style={barStyle}>
-      {/* Connection selector — shows all connections */}
       <select
         value={activeTab.connectionId ?? ''}
         onChange={(e) => updateTabConnection(activeTab.id, e.target.value)}
@@ -102,99 +141,56 @@ export function EditorToolbar(): JSX.Element {
         ))}
       </select>
 
-      <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--border)' }} />
+      <div style={sepStyle} />
 
-      {/* Action buttons */}
-      <button
-        onClick={handleExecute}
-        disabled={result.isExecuting || !activeTab.connectionId}
-        style={btnStyle}
-        title="Execute (Cmd+Enter)"
-      >
+      <button onClick={handleRun} disabled={result.isExecuting || !activeTab.connectionId} style={btnStyle} title="Execute (Cmd+Enter)">
         {result.isExecuting ? <Loader2 size={13} /> : <Play size={13} />}
         Run
       </button>
-      <button
-        onClick={handleExplain}
-        disabled={result.isExecuting || !activeTab.connectionId}
-        style={btnStyle}
-        title="Explain (Cmd+Shift+Enter)"
-      >
+      <button onClick={handleExplain} disabled={result.isExecuting || !activeTab.connectionId} style={btnStyle} title="Explain (Cmd+Shift+Enter)">
         <Lightbulb size={13} />
         Explain
       </button>
 
-      <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--border)' }} />
+      <div style={sepStyle} />
 
-      <button
-        onClick={() => setShowExport(true)}
-        disabled={!activeTab.connectionId || !activeTab.sql.trim()}
-        style={btnStyle}
-        title="Export results"
-      >
-        <Download size={13} />
-        Export
+      <button onClick={() => setShowExport(true)} disabled={!activeTab.connectionId || !activeTab.sql.trim()} style={btnStyle} title="Export results">
+        <Download size={13} /> Export
       </button>
-
-      <button
-        onClick={() => setShowSave(true)}
-        disabled={!activeTab.sql.trim()}
-        style={btnStyle}
-        title="Save query (Cmd+S)"
-      >
-        <Save size={13} />
-        Save
+      <button onClick={() => setShowSave(true)} disabled={!activeTab.sql.trim()} style={btnStyle} title="Save query (Cmd+S)">
+        <Save size={13} /> Save
       </button>
 
       {showExport && activeTab.connectionId && (
-        <ExportDialog
-          connectionId={activeTab.connectionId}
-          sql={activeTab.sql}
-          onClose={() => setShowExport(false)}
-        />
+        <ExportDialog connectionId={activeTab.connectionId} sql={activeTab.sql} onClose={() => setShowExport(false)} />
       )}
       {showSave && (
-        <SaveDialog
-          connectionId={activeTab.connectionId}
-          sql={activeTab.sql}
-          onClose={() => setShowSave(false)}
+        <SaveDialog connectionId={activeTab.connectionId} sql={activeTab.sql} onClose={() => setShowSave(false)} />
+      )}
+      {showBindVars && (
+        <BindVariablesDialog
+          paramNames={bindParams}
+          initialValues={activeTab.bindVariables}
+          onExecute={showBindVars === 'execute' ? executeWithBinds : explainWithBinds}
+          onCancel={() => setShowBindVars(null)}
         />
       )}
     </div>
   )
 }
 
-const barStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '6px',
-  padding: '4px 8px',
-  backgroundColor: 'var(--background)',
-  borderBottom: '1px solid var(--border)',
-  height: '34px',
-  flexShrink: 0
+/** Try to parse a string value as number/boolean/null, fallback to string */
+function parseBindValue(v: string): unknown {
+  if (v === '') return null
+  if (v === 'true') return true
+  if (v === 'false') return false
+  if (v === 'null') return null
+  const num = Number(v)
+  if (!isNaN(num) && v.trim() !== '') return num
+  return v
 }
 
-const selectStyle: React.CSSProperties = {
-  backgroundColor: 'var(--accent)',
-  border: '1px solid var(--border)',
-  borderRadius: '4px',
-  padding: '3px 8px',
-  fontSize: '11px',
-  color: 'var(--foreground)',
-  outline: 'none',
-  maxWidth: '200px'
-}
-
-const btnStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '4px',
-  backgroundColor: 'var(--accent)',
-  border: '1px solid var(--border)',
-  borderRadius: '4px',
-  padding: '3px 10px',
-  fontSize: '11px',
-  color: 'var(--foreground)',
-  cursor: 'pointer'
-}
+const barStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', backgroundColor: 'var(--background)', borderBottom: '1px solid var(--border)', height: '34px', flexShrink: 0 }
+const selectStyle: React.CSSProperties = { backgroundColor: 'var(--accent)', border: '1px solid var(--border)', borderRadius: '4px', padding: '3px 8px', fontSize: '11px', color: 'var(--foreground)', outline: 'none', maxWidth: '200px' }
+const btnStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: 'var(--accent)', border: '1px solid var(--border)', borderRadius: '4px', padding: '3px 10px', fontSize: '11px', color: 'var(--foreground)', cursor: 'pointer' }
+const sepStyle: React.CSSProperties = { width: '1px', height: '16px', backgroundColor: 'var(--border)' }

@@ -35,16 +35,16 @@ export interface FullSchema {
   columns_by_table: Record<string, ColumnInfo[]>
 }
 
-export function useFullSchema(connectionId: string | null, isConnected: boolean, schema: string = 'public') {
+export function useFullSchema(connectionId: string | null, schema: string = 'public') {
   return useQuery({
     queryKey: ['full-schema', connectionId, schema],
     queryFn: () =>
       api.get<FullSchema>(
         `/api/connections/${connectionId}/full-schema?schema=${schema}`
       ),
-    enabled: !!connectionId && isConnected,
-    staleTime: 60_000,
-    retry: 2,
-    retryDelay: 1000,
+    enabled: !!connectionId,
+    staleTime: 30_000,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * attempt, 5000),
   })
 }

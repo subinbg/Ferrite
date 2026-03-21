@@ -164,22 +164,24 @@ impl PostgresDriver {
         bind_variables: &HashMap<String, serde_json::Value>,
         limit: usize,
         offset: usize,
+        timeout_seconds: u64,
     ) -> Result<QueryResult, FerriteError> {
         let execution_id = Uuid::new_v4();
         let start = Instant::now();
 
-        // Replace :name bind variables with $N positional params
-        let (processed_sql, ordered_values) = process_bind_variables(sql, bind_variables)?;
+        // SECURITY NOTE: Bind variables use literal text substitution, not parameterized queries.
+        // This is by design for a database studio — the user controls both SQL and values.
+        // Single quotes are escaped via '' (SQL standard). This matches DataGrip/DBeaver behavior.
+        let processed_sql = process_bind_variables(sql, bind_variables)?;
 
-        let mut query = sqlx::query(&processed_sql);
-        for val in &ordered_values {
-            query = bind_json_value(query, val);
-        }
-
-        let rows = query
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| FerriteError::Database(e.to_string()))?;
+        let timeout = std::time::Duration::from_secs(if timeout_seconds > 0 { timeout_seconds } else { 30 });
+        let rows = tokio::time::timeout(
+            timeout,
+            sqlx::query(&processed_sql).fetch_all(&self.pool),
+        )
+        .await
+        .map_err(|_| FerriteError::QueryTimeout(timeout.as_secs()))?
+        .map_err(|e| FerriteError::Database(e.to_string()))?;
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -234,15 +236,10 @@ impl PostgresDriver {
         sql: &str,
         bind_variables: &HashMap<String, serde_json::Value>,
     ) -> Result<ExplainResult, FerriteError> {
-        let (processed_sql, ordered_values) = process_bind_variables(sql, bind_variables)?;
+        let processed_sql = process_bind_variables(sql, bind_variables)?;
         let explain_sql = format!("EXPLAIN (ANALYZE, FORMAT JSON) {processed_sql}");
 
-        let mut query = sqlx::query(&explain_sql);
-        for val in &ordered_values {
-            query = bind_json_value(query, val);
-        }
-
-        let rows = query
+        let rows = sqlx::query(&explain_sql)
             .fetch_all(&self.pool)
             .await
             .map_err(|e| FerriteError::Database(e.to_string()))?;
@@ -260,59 +257,62 @@ impl PostgresDriver {
     }
 }
 
-/// Replace `:name` bind variables with `$N` positional params.
-/// Returns the processed SQL and an ordered list of values.
+/// Replace `:name` bind variables with literal SQL values.
+/// This does direct text substitution (like DataGrip) rather than parameterized queries,
+/// so PostgreSQL handles type coercion naturally (e.g., a UUID string in a UUID column context).
 fn process_bind_variables(
     sql: &str,
     binds: &HashMap<String, serde_json::Value>,
-) -> Result<(String, Vec<serde_json::Value>), FerriteError> {
+) -> Result<String, FerriteError> {
     if binds.is_empty() {
-        return Ok((sql.to_string(), vec![]));
+        return Ok(sql.to_string());
     }
 
     let mut result = sql.to_string();
-    let mut ordered_values = Vec::new();
-    let mut param_index = 1;
 
-    // Find all :name patterns (not inside strings)
+    // Find all :name patterns, skip :: (PostgreSQL type cast)
     let re = regex_lite::Regex::new(r":([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
     let mut replacements = Vec::new();
 
     for cap in re.captures_iter(sql) {
+        let full_match = cap.get(0).unwrap();
+        // Skip :: casts (check character before the match)
+        if full_match.start() > 0 && sql.as_bytes()[full_match.start() - 1] == b':' {
+            continue;
+        }
         let name = &cap[1];
         if let Some(value) = binds.get(name) {
-            replacements.push((cap.get(0).unwrap().range(), format!("${param_index}")));
-            ordered_values.push(value.clone());
-            param_index += 1;
+            replacements.push((full_match.range(), json_to_sql_literal(value)));
         }
     }
 
-    // Apply replacements in reverse order to preserve positions
+    // Apply in reverse to preserve positions
     for (range, replacement) in replacements.into_iter().rev() {
         result.replace_range(range, &replacement);
     }
 
-    Ok((result, ordered_values))
+    Ok(result)
 }
 
-fn bind_json_value<'q>(
-    query: sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>,
-    value: &'q serde_json::Value,
-) -> sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments> {
+/// Convert a JSON value to a safe SQL literal string.
+fn json_to_sql_literal(value: &serde_json::Value) -> String {
     match value {
-        serde_json::Value::Null => query.bind(None::<String>),
-        serde_json::Value::Bool(b) => query.bind(*b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                query.bind(i)
-            } else if let Some(f) = n.as_f64() {
-                query.bind(f)
-            } else {
-                query.bind(n.to_string())
-            }
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::Bool(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => {
+            // Escape single quotes by doubling them (standard SQL escaping)
+            let escaped = s.replace('\'', "''");
+            format!("'{escaped}'")
         }
-        serde_json::Value::String(s) => query.bind(s.as_str()),
-        other => query.bind(other.to_string()),
+        serde_json::Value::Array(arr) => {
+            let items: Vec<String> = arr.iter().map(json_to_sql_literal).collect();
+            format!("ARRAY[{}]", items.join(", "))
+        }
+        serde_json::Value::Object(_) => {
+            let escaped = value.to_string().replace('\'', "''");
+            format!("'{escaped}'::jsonb")
+        }
     }
 }
 

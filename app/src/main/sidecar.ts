@@ -86,7 +86,7 @@ export function stopSidecar(info: SidecarInfo): void {
     return // Already dead
   }
 
-  // Force kill after 3 seconds if still alive
+  // Force kill after 10 seconds if still alive (gives Rust time to close DB pools)
   const forceKillTimer = setTimeout(() => {
     try {
       if (info.process && !info.process.killed) {
@@ -95,7 +95,7 @@ export function stopSidecar(info: SidecarInfo): void {
     } catch {
       // Already dead
     }
-  }, 3_000)
+  }, 10_000)
 
   info.process.on('exit', () => clearTimeout(forceKillTimer))
 }

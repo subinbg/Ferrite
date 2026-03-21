@@ -64,6 +64,22 @@ async function createWindow(): Promise<void> {
     mainWindow?.show()
   })
 
+  // Confirmation dialog on window close
+  mainWindow.on('close', (e) => {
+    const result = dialog.showMessageBoxSync(mainWindow!, {
+      type: 'question',
+      buttons: ['Cancel', 'Close'],
+      defaultId: 1,
+      cancelId: 0,
+      title: 'Close Ferrite',
+      message: 'Closing Ferrite will terminate your session and disconnect all active databases.',
+      detail: 'Any unsaved changes will be lost.',
+    })
+    if (result === 0) {
+      e.preventDefault()
+    }
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }

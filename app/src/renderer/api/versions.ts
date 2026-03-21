@@ -25,7 +25,7 @@ export function useCreateVersion() {
 export function useUpdateVersion() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; label?: string; notes?: string }) =>
+    mutationFn: ({ id, ...data }: { id: string; title?: string; label?: string; notes?: string }) =>
       api.put<QueryVersion>(`/api/versions/${id}`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['versions'] })
   })

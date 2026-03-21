@@ -17,6 +17,7 @@ interface TabsState {
   setActiveTab: (id: string) => void
   updateTabSql: (id: string, sql: string) => void
   updateTabConnection: (id: string, connectionId: string) => void
+  updateTabBindVariables: (id: string, bindVariables: Record<string, string>) => void
 }
 
 let nextTabNum = 1
@@ -64,5 +65,10 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   updateTabConnection: (id, connectionId) =>
     set((s) => ({
       tabs: s.tabs.map((t) => (t.id === id ? { ...t, connectionId } : t))
+    })),
+
+  updateTabBindVariables: (id, bindVariables) =>
+    set((s) => ({
+      tabs: s.tabs.map((t) => (t.id === id ? { ...t, bindVariables } : t))
     }))
 }))

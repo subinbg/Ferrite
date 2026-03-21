@@ -40,6 +40,7 @@ export function ConnectionTree({ connections }: { connections: Connection[] }): 
 function ConnectionNode({ connection }: { connection: Connection }): JSX.Element {
   const [expanded, setExpandedState] = useState(() => expandedConnections.has(connection.id))
   const [showDetail, setShowDetail] = useState(false)
+  const [connectError, setConnectError] = useState<string | null>(null)
   const connectMutation = useConnectConnection()
   const disconnectMutation = useDisconnectConnection()
   const deleteMutation = useDeleteConnection()
@@ -55,10 +56,13 @@ function ConnectionNode({ connection }: { connection: Connection }): JSX.Element
 
   const handleToggleConnection = (e: React.MouseEvent) => {
     e.stopPropagation()
+    setConnectError(null)
     if (connection.connected) {
       disconnectMutation.mutate(connection.id)
     } else {
-      connectMutation.mutate(connection.id)
+      connectMutation.mutate(connection.id, {
+        onError: (err: Error) => setConnectError(err.message),
+      })
     }
   }
 
@@ -129,6 +133,11 @@ function ConnectionNode({ connection }: { connection: Connection }): JSX.Element
         </div>
       </div>
 
+      {connectError && (
+        <div style={{ padding: '4px 12px 6px 28px', fontSize: '10px', color: 'var(--destructive)', lineHeight: '1.4' }}>
+          {connectError}
+        </div>
+      )}
       {expanded && connection.connected && <TablesSubtree connectionId={connection.id} />}
       {showDetail && <ConnectionDetail connection={connection} onClose={() => setShowDetail(false)} />}
     </div>
