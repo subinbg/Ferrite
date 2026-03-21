@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary: ferrite
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            binary: ferrite
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary: ferrite
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: ferrite.exe
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      # Build frontend
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cd app && npm ci && npx electron-vite build
+
+      # Build Rust binary
+      - run: cargo build --release --target ${{ matrix.target }} -p ferrite-server
+
+      # Upload standalone binary
+      - name: Archive binary
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ferrite-${{ matrix.target }}.tar.gz ${{ matrix.binary }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ferrite-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/ferrite-${{ matrix.target }}.tar.gz
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: '*.tar.gz'
+          generate_release_notes: true
