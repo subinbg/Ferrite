@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { X, Database, Play, Square, Loader2, Save } from 'lucide-react'
-import { useConnectConnection, useDisconnectConnection, useUpdateConnection } from '../../api/connections'
+import { X, Database, Play, Square, Loader2, Save, Zap } from 'lucide-react'
+import { useConnectConnection, useDisconnectConnection, useUpdateConnection, useTestConnection } from '../../api/connections'
 import type { Connection } from '../../types/connection'
 
 interface Props {
@@ -11,18 +11,34 @@ interface Props {
 export function ConnectionDetail({ connection, onClose }: Props): JSX.Element {
   const [name, setName] = useState(connection.name)
   const [color, setColor] = useState(connection.color || '#3b82f6')
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [connectError, setConnectError] = useState<string | null>(null)
   const connectMutation = useConnectConnection()
   const disconnectMutation = useDisconnectConnection()
   const updateMutation = useUpdateConnection()
+  const testMutation = useTestConnection()
   const isLoading = connectMutation.isPending || disconnectMutation.isPending
 
   const hasChanges = name !== connection.name || color !== (connection.color || '#3b82f6')
 
   const handleToggle = () => {
+    setConnectError(null)
     if (connection.connected) {
       disconnectMutation.mutate(connection.id)
     } else {
-      connectMutation.mutate(connection.id)
+      connectMutation.mutate(connection.id, {
+        onError: (err: Error) => setConnectError(err.message),
+      })
+    }
+  }
+
+  const handleTest = async () => {
+    setTestResult(null)
+    try {
+      const result = await testMutation.mutateAsync(connection.id)
+      setTestResult(result)
+    } catch (err: any) {
+      setTestResult({ ok: false, message: err.message })
     }
   }
 
@@ -86,8 +102,41 @@ export function ConnectionDetail({ connection, onClose }: Props): JSX.Element {
           <Row label="ID" value={connection.id} mono />
         </div>
 
+        {/* Test / Connect status */}
+        <div style={{ padding: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {testMutation.isPending && (
+            <div style={{ ...statusStyle, backgroundColor: 'var(--accent)', color: 'var(--muted-foreground)' }}>
+              <Loader2 size={12} className="animate-spin" /> Testing connection...
+            </div>
+          )}
+          {testResult && (
+            <div style={{
+              ...statusStyle,
+              backgroundColor: testResult.ok ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+              color: testResult.ok ? 'var(--success)' : 'var(--destructive)',
+              border: `1px solid ${testResult.ok ? 'var(--success)' : 'var(--destructive)'}`,
+            }}>
+              {testResult.ok ? testResult.message : `Connection failed: ${testResult.message}`}
+            </div>
+          )}
+          {connectError && (
+            <div style={{ ...statusStyle, backgroundColor: 'rgba(239,68,68,0.1)', color: 'var(--destructive)', border: '1px solid var(--destructive)' }}>
+              Connection failed: {connectError}
+            </div>
+          )}
+          {isLoading && !connection.connected && (
+            <div style={{ ...statusStyle, backgroundColor: 'var(--accent)', color: 'var(--muted-foreground)' }}>
+              <Loader2 size={12} className="animate-spin" /> Connecting...
+            </div>
+          )}
+        </div>
+
         {/* Footer */}
         <div style={footerStyle}>
+          <button onClick={handleTest} disabled={testMutation.isPending || isLoading} style={testBtnStyle}>
+            {testMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+            Test
+          </button>
           <button onClick={handleToggle} disabled={isLoading} style={connection.connected ? stopBtnStyle : playBtnStyle}>
             {isLoading ? (
               <Loader2 size={14} className="animate-spin" />
@@ -144,3 +193,5 @@ const playBtnStyle: React.CSSProperties = { backgroundColor: 'var(--success)', c
 const stopBtnStyle: React.CSSProperties = { backgroundColor: 'var(--destructive)', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }
 const saveBtnStyle: React.CSSProperties = { backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }
 const secondaryBtnStyle: React.CSSProperties = { backgroundColor: 'var(--accent)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', cursor: 'pointer' }
+const testBtnStyle: React.CSSProperties = { backgroundColor: 'var(--accent)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }
+const statusStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: '6px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', wordBreak: 'break-word' as const }

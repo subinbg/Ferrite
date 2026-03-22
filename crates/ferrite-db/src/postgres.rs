@@ -46,6 +46,7 @@ impl PostgresDriver {
         let opts = build_pg_options(params);
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(5)
+            .acquire_timeout(std::time::Duration::from_secs(10))
             .connect_with(opts)
             .await
             .map_err(|e| FerriteError::Connection(e.to_string()))?;
@@ -61,6 +62,7 @@ impl PostgresDriver {
         let opts = build_pg_options(params);
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(1)
+            .acquire_timeout(std::time::Duration::from_secs(10))
             .connect_with(opts)
             .await
             .map_err(|e| FerriteError::Connection(e.to_string()))?;

@@ -146,7 +146,12 @@ export function ConnectionForm({ onClose }: Props): JSX.Element {
             />
           </Field>
 
-          {/* Test result */}
+          {/* Test status */}
+          {(testMutation.isPending || createMutation.isPending) && !testResult && (
+            <div style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px', backgroundColor: 'var(--accent)', color: 'var(--muted-foreground)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Loader2 size={12} className="animate-spin" /> Testing connection...
+            </div>
+          )}
           {testResult && (
             <div
               style={{
@@ -155,10 +160,11 @@ export function ConnectionForm({ onClose }: Props): JSX.Element {
                 fontSize: '12px',
                 backgroundColor: testResult.ok ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
                 color: testResult.ok ? 'var(--success)' : 'var(--destructive)',
-                border: `1px solid ${testResult.ok ? 'var(--success)' : 'var(--destructive)'}`
+                border: `1px solid ${testResult.ok ? 'var(--success)' : 'var(--destructive)'}`,
+                wordBreak: 'break-word'
               }}
             >
-              {testResult.message}
+              {testResult.ok ? testResult.message : `Connection failed: ${testResult.message}`}
             </div>
           )}
         </div>
@@ -170,7 +176,7 @@ export function ConnectionForm({ onClose }: Props): JSX.Element {
             disabled={testMutation.isPending || createMutation.isPending}
             style={secondaryBtnStyle}
           >
-            {testMutation.isPending ? <Loader2 size={14} className="spin" /> : <Zap size={14} />}
+            {testMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
             Test Connection
           </button>
           <div style={{ flex: 1 }} />

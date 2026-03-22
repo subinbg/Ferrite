@@ -6,6 +6,7 @@ members = [
     "crates/ferrite-db",
     "crates/ferrite-store",
     "crates/ferrite-export",
+    "crates/ferrite-mcp",
     "crates/ferrite-server",
 ]
 
@@ -23,6 +24,7 @@ ferrite-crypto = { path = "crates/ferrite-crypto" }
 ferrite-db = { path = "crates/ferrite-db" }
 ferrite-store = { path = "crates/ferrite-store" }
 ferrite-export = { path = "crates/ferrite-export" }
+ferrite-mcp = { path = "crates/ferrite-mcp" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

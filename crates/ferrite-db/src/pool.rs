@@ -9,6 +9,14 @@ pub struct PoolManager {
     drivers: HashMap<Uuid, DatabaseDriver>,
 }
 
+impl std::fmt::Debug for PoolManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PoolManager")
+            .field("connections", &self.drivers.len())
+            .finish()
+    }
+}
+
 impl PoolManager {
     pub fn new() -> Self {
         Self {

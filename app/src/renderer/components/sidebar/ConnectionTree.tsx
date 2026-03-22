@@ -133,9 +133,14 @@ function ConnectionNode({ connection }: { connection: Connection }): JSX.Element
         </div>
       </div>
 
+      {isLoading && !connection.connected && (
+        <div style={{ padding: '4px 12px 6px 28px', fontSize: '10px', color: 'var(--muted-foreground)' }}>
+          Connecting...
+        </div>
+      )}
       {connectError && (
-        <div style={{ padding: '4px 12px 6px 28px', fontSize: '10px', color: 'var(--destructive)', lineHeight: '1.4' }}>
-          {connectError}
+        <div style={{ padding: '4px 12px 6px 28px', fontSize: '10px', color: 'var(--destructive)', lineHeight: '1.4', wordBreak: 'break-word' }}>
+          Connection failed: {connectError}
         </div>
       )}
       {expanded && connection.connected && <TablesSubtree connectionId={connection.id} />}
