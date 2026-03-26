@@ -60,6 +60,10 @@ impl PoolManager {
     pub fn is_connected(&self, id: &Uuid) -> bool {
         self.drivers.contains_key(id)
     }
+
+    pub fn has_any_connection(&self) -> bool {
+        !self.drivers.is_empty()
+    }
 }
 
 impl Default for PoolManager {

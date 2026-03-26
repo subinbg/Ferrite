@@ -123,7 +123,43 @@ impl ServerHandler for FerriteMcpServer {
     }
 }
 
-/// Create an axum-compatible MCP HTTP SSE service.
+/// Middleware: reject ALL MCP requests if vault is locked or no connections are active.
+async fn vault_guard(
+    axum::extract::State(state): axum::extract::State<McpState>,
+    request: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+
+    // Allow GET requests (SSE stream pickup) — they're already authenticated by session
+    if request.method() == axum::http::Method::GET || request.method() == axum::http::Method::DELETE {
+        return next.run(request).await;
+    }
+
+    // Check vault is unlocked
+    if state.vault.read().await.is_none() {
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "Ferrite vault is locked. Open the Ferrite app and enter your master password first.",
+        ).into_response();
+    }
+
+    // Check at least one database connection is active
+    let pool_mgr = state.pool_manager.read().await;
+    let has_connections = pool_mgr.has_any_connection();
+    drop(pool_mgr);
+
+    if !has_connections {
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "No database connections are active. Connect a database in the Ferrite UI first.",
+        ).into_response();
+    }
+
+    next.run(request).await
+}
+
+/// Create an axum-compatible MCP HTTP SSE service with vault/connection middleware.
 pub fn create_mcp_router(state: McpState) -> axum::Router {
     use rmcp::transport::streamable_http_server::{
         StreamableHttpService, StreamableHttpServerConfig,
@@ -138,11 +174,15 @@ pub fn create_mcp_router(state: McpState) -> axum::Router {
         ..Default::default()
     };
 
+    let mcp_state = state.clone();
     let service = StreamableHttpService::new(
-        move || Ok(FerriteMcpServer::new(state.clone())),
+        move || Ok(FerriteMcpServer::new(mcp_state.clone())),
         Arc::new(LocalSessionManager::default()),
         config,
     );
 
-    axum::Router::new().nest_service("/mcp", service)
+    axum::Router::new()
+        .nest_service("/mcp", service)
+        .layer(axum::middleware::from_fn_with_state(state.clone(), vault_guard))
+        .with_state(state)
 }

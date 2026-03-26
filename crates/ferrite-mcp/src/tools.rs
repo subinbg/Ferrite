@@ -9,6 +9,8 @@ use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 /// Shared state passed to MCP tool handlers.
+/// Vault and "at least one connection" checks are enforced by the middleware layer.
+/// Tool handlers only need to check the specific connection_id they operate on.
 #[derive(Clone, Debug)]
 pub struct McpState {
     pub vault: Arc<RwLock<Option<MasterVault>>>,
@@ -17,13 +19,7 @@ pub struct McpState {
 }
 
 impl McpState {
-    pub async fn require_vault(&self) -> Result<()> {
-        if self.vault.read().await.is_none() {
-            bail!("Ferrite vault is locked. Open the Ferrite app and enter your master password first.");
-        }
-        Ok(())
-    }
-
+    /// Check that a specific connection is active.
     pub async fn require_connection(&self, connection_id: &str) -> Result<Uuid> {
         let uuid = Uuid::parse_str(connection_id)
             .map_err(|_| anyhow::anyhow!("Invalid connection ID: {connection_id}"))?;
@@ -35,7 +31,6 @@ impl McpState {
 }
 
 pub async fn list_connections(state: &McpState) -> Result<String> {
-    state.require_vault().await?;
     let store = state.store.lock().await;
     let records = store.list_connections()?;
     let pool_mgr = state.pool_manager.read().await;
@@ -55,7 +50,6 @@ pub async fn list_connections(state: &McpState) -> Result<String> {
 }
 
 pub async fn list_tables(state: &McpState, connection_id: &str, schema: &str) -> Result<String> {
-    state.require_vault().await?;
     let uuid = state.require_connection(connection_id).await?;
     let pool_mgr = state.pool_manager.read().await;
     let driver = pool_mgr.get(&uuid).ok_or_else(|| anyhow::anyhow!("Connection lost"))?;
@@ -64,7 +58,6 @@ pub async fn list_tables(state: &McpState, connection_id: &str, schema: &str) ->
 }
 
 pub async fn list_columns(state: &McpState, connection_id: &str, table: &str, schema: &str) -> Result<String> {
-    state.require_vault().await?;
     let uuid = state.require_connection(connection_id).await?;
     let pool_mgr = state.pool_manager.read().await;
     let driver = pool_mgr.get(&uuid).ok_or_else(|| anyhow::anyhow!("Connection lost"))?;
@@ -74,7 +67,6 @@ pub async fn list_columns(state: &McpState, connection_id: &str, table: &str, sc
 
 pub async fn execute_readonly_query(state: &McpState, connection_id: &str, sql: &str, limit: usize) -> Result<String> {
     validate_readonly_sql(sql).map_err(|e| anyhow::anyhow!("Read-only validation failed: {e}"))?;
-    state.require_vault().await?;
     let uuid = state.require_connection(connection_id).await?;
     let pool_mgr = state.pool_manager.read().await;
     let driver = pool_mgr.get(&uuid).ok_or_else(|| anyhow::anyhow!("Connection lost"))?;
@@ -87,7 +79,6 @@ pub async fn execute_readonly_query(state: &McpState, connection_id: &str, sql: 
 }
 
 pub async fn explain_query(state: &McpState, connection_id: &str, sql: &str) -> Result<String> {
-    state.require_vault().await?;
     let uuid = state.require_connection(connection_id).await?;
     let pool_mgr = state.pool_manager.read().await;
     let driver = pool_mgr.get(&uuid).ok_or_else(|| anyhow::anyhow!("Connection lost"))?;
