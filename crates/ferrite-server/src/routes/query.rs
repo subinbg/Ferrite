@@ -5,6 +5,7 @@ use axum::{
     response::IntoResponse,
 };
 use ferrite_core::types::query::QueryRequest;
+use ferrite_store::activity::NewActivity;
 use ferrite_store::history::NewHistoryEntry;
 
 use crate::state::AppState;
@@ -45,6 +46,40 @@ pub async fn execute_query(
                 dialect: dialect.clone(),
                 status: "error".to_string(),
                 error_message: Some(e.to_string()),
+                row_count: None,
+                duration_ms: None,
+            });
+        }
+    }
+
+    // Also record in unified activity log
+    match &result {
+        Ok(qr) => {
+            let _ = store.insert_activity(&NewActivity {
+                activity_type: "query".to_string(),
+                source: "ui".to_string(),
+                connection_id: Some(req.connection_id.to_string()),
+                tool_name: None,
+                request_text: req.sql.clone(),
+                request_params: None,
+                status: "success".to_string(),
+                error_message: None,
+                result_summary: Some(format!("{} rows in {}ms", qr.row_count, qr.duration_ms)),
+                row_count: Some(qr.row_count as i64),
+                duration_ms: Some(qr.duration_ms as i64),
+            });
+        }
+        Err(e) => {
+            let _ = store.insert_activity(&NewActivity {
+                activity_type: "query".to_string(),
+                source: "ui".to_string(),
+                connection_id: Some(req.connection_id.to_string()),
+                tool_name: None,
+                request_text: req.sql.clone(),
+                request_params: None,
+                status: "error".to_string(),
+                error_message: Some(e.to_string()),
+                result_summary: None,
                 row_count: None,
                 duration_ms: None,
             });

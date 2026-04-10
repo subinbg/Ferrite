@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Database, Plus, PlugZap, History, Bookmark } from 'lucide-react'
+import { Database, Plus, PlugZap, Activity, Bookmark } from 'lucide-react'
 import { useConnections } from '../../api/connections'
 import { ConnectionForm } from '../sidebar/ConnectionForm'
 import { ConnectionTree } from '../sidebar/ConnectionTree'
-import { HistoryPanel } from '../history/HistoryPanel'
+import { ActivityPanel } from '../history/ActivityPanel'
 import { SavedQueries } from '../history/SavedQueries'
 import { useLayoutStore } from '../../stores/layout'
 
@@ -22,8 +22,8 @@ export function Sidebar(): JSX.Element {
         <TabButton active={sidebarTab === 'explorer'} onClick={() => setSidebarTab('explorer')} title="Explorer">
           <Database size={14} />
         </TabButton>
-        <TabButton active={sidebarTab === 'history'} onClick={() => setSidebarTab('history')} title="History">
-          <History size={14} />
+        <TabButton active={sidebarTab === 'history'} onClick={() => setSidebarTab('history')} title="Activity">
+          <Activity size={14} />
         </TabButton>
         <TabButton active={sidebarTab === 'saved'} onClick={() => setSidebarTab('saved')} title="Saved Queries">
           <Bookmark size={14} />
@@ -55,7 +55,7 @@ export function Sidebar(): JSX.Element {
             {connections && connections.length > 0 && <ConnectionTree connections={connections} />}
           </div>
         )}
-        {sidebarTab === 'history' && <HistoryPanel />}
+        {sidebarTab === 'history' && <ActivityPanel />}
         {sidebarTab === 'saved' && <SavedQueries />}
       </div>
 

@@ -28,3 +28,6 @@ Thumbs.db
 
 # Dev data directory
 /.ferrite-data/
+
+# Temporary data
+/tmp/

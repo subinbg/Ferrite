@@ -1,3 +1,4 @@
+pub mod activity;
 pub mod connections;
 pub mod export;
 pub mod history;

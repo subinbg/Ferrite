@@ -62,6 +62,7 @@ impl AppStore {
         let migrations: Vec<(&str, &str)> = vec![
             ("001_init", include_str!("migrations/001_init.sql")),
             ("002_fts", include_str!("migrations/002_fts.sql")),
+            ("003_activity_log", include_str!("migrations/003_activity_log.sql")),
         ];
 
         for (name, sql) in migrations {

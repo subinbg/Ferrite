@@ -12,7 +12,7 @@ use tower_http::{
 
 use crate::auth::auth_middleware;
 use axum::routing::delete;
-use crate::routes::{connections, export, history, query, schema, settings};
+use crate::routes::{activity, connections, export, history, query, schema, settings};
 use crate::state::AppState;
 
 async fn health(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
@@ -74,7 +74,9 @@ pub fn create_router(state: AppState, standalone: bool) -> Router {
         .nest("/query", query_routes)
         .nest("/history", history_routes)
         .nest("/versions", version_routes)
-        .route("/export", post(export::export_data));
+        .route("/export", post(export::export_data))
+        .route("/activities", get(activity::list_activities))
+        .route("/activities/{id}", delete(activity::delete_activity));
 
     let mut router = Router::new()
         .nest("/api", api_routes);
