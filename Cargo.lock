@@ -888,7 +888,6 @@ dependencies = [
  "base64",
  "chrono",
  "clap",
- "dirs",
  "ferrite-core",
  "ferrite-crypto",
  "ferrite-db",
@@ -918,7 +917,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "dirs",
  "ferrite-core",
  "rusqlite",
  "serde",

@@ -1,5 +1,4 @@
 use rusqlite::Connection;
-use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -19,14 +18,6 @@ pub struct AppStore {
 }
 
 impl AppStore {
-    /// Open or create the app database at the standard data directory.
-    pub fn open_default() -> Result<Self, StoreError> {
-        let data_dir = Self::data_dir()?;
-        std::fs::create_dir_all(&data_dir)?;
-        let db_path = data_dir.join("ferrite.db");
-        Self::open(&db_path)
-    }
-
     /// Open or create the app database at a specific path.
     pub fn open(path: &std::path::Path) -> Result<Self, StoreError> {
         let conn = Connection::open(path)?;
@@ -80,12 +71,6 @@ impl AppStore {
         }
 
         Ok(())
-    }
-
-    fn data_dir() -> Result<PathBuf, StoreError> {
-        let base = dirs::data_dir()
-            .ok_or_else(|| StoreError::Io(std::io::Error::other("no data directory found")))?;
-        Ok(base.join("ferrite"))
     }
 }
 

@@ -5,6 +5,9 @@ import { resolve } from 'path'
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
+    define: {
+      'process.env.FERRITE_MCP_PORT': JSON.stringify(process.env.FERRITE_MCP_PORT ?? '')
+    },
     build: {
       rollupOptions: {
         input: {

@@ -21,12 +21,14 @@
 
 APP_DIR := app
 DEV_DATA_DIR := .ferrite-data
+DEV_DB_FILE := $(abspath $(DEV_DATA_DIR))/ferrite.db
 APP_BIN_DIR := $(APP_DIR)/build/bin
 MCP_PORT ?= 26260
 
 ifeq ($(OS),Windows_NT)
 EXE_EXT := .exe
-DEV_ENV := set "FERRITE_DATA_DIR=$(abspath $(DEV_DATA_DIR))"&& set "FERRITE_MCP_PORT=$(MCP_PORT)"&&
+DEV_ENV := set "FERRITE_DB_FILE=$(DEV_DB_FILE)"&& set "FERRITE_MCP_PORT=$(MCP_PORT)"&&
+BUILD_ENV := set "FERRITE_MCP_PORT=$(MCP_PORT)"&&
 define STAGE_SIDECAR
 	powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -LiteralPath '$(APP_BIN_DIR)' -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Path '$(APP_BIN_DIR)' -Force | Out-Null; Copy-Item -LiteralPath '$(RELEASE_SIDECAR)' -Destination '$(PACKAGED_SIDECAR)' -Force"
 endef
@@ -38,7 +40,8 @@ define CLEAN_GENERATED
 endef
 else
 EXE_EXT :=
-DEV_ENV := FERRITE_DATA_DIR="$(abspath $(DEV_DATA_DIR))" FERRITE_MCP_PORT="$(MCP_PORT)"
+DEV_ENV := FERRITE_DB_FILE="$(DEV_DB_FILE)" FERRITE_MCP_PORT="$(MCP_PORT)"
+BUILD_ENV := FERRITE_MCP_PORT="$(MCP_PORT)"
 define STAGE_SIDECAR
 	rm -rf "$(APP_BIN_DIR)"
 	mkdir -p "$(APP_BIN_DIR)"
@@ -71,7 +74,7 @@ verify: verify-app verify-crates
 
 verify-app:
 	cd "$(APP_DIR)" && npm run verify
-	cd "$(APP_DIR)" && npm run build
+	cd "$(APP_DIR)" && $(BUILD_ENV) npm run build
 
 verify-crates:
 	cargo fmt --all --check
@@ -86,7 +89,7 @@ dev:
 build: build-app build-sidecar stage-sidecar
 
 build-app:
-	cd "$(APP_DIR)" && npm run build
+	cd "$(APP_DIR)" && $(BUILD_ENV) npm run build
 
 build-sidecar:
 	cargo build --release -p ferrite-server

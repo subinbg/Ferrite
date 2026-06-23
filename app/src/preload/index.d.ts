@@ -12,13 +12,13 @@ export interface FerriteApi {
     options?: Record<string, unknown>
   }) => Promise<{ bytes: Uint8Array; contentType: string; filename: string }>
   getDesktopState: () => Promise<DesktopState>
-  switchDataDir: () => Promise<DesktopState>
+  switchDatabase: () => Promise<void>
   setMcpEnabled: (enabled: boolean) => Promise<DesktopState>
   pickSqliteFile: () => Promise<string | null>
 }
 
 export interface DesktopState {
-  dataDir: string
+  dbPath: string
   mcpEnabled: boolean
   mcpUrl: string | null
 }

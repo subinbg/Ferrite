@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "ferrite": {
-      "transport": "streamable-http",
+      "type": "http",
       "url": "http://127.0.0.1:26260/mcp"
     }
   }

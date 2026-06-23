@@ -18,8 +18,8 @@ pub struct ServerConfig {
     pub port: u16,
     pub standalone: bool,
     pub dev: bool,
-    pub data_dir: Option<PathBuf>,
-    pub mcp_port: u16,
+    pub db_file: PathBuf,
+    pub mcp_port: Option<u16>,
 }
 
 struct McpServerHandle {
@@ -27,24 +27,15 @@ struct McpServerHandle {
     task: JoinHandle<()>,
 }
 
-impl Default for ServerConfig {
-    fn default() -> Self {
-        Self {
-            port: 0,
-            standalone: false,
-            dev: false,
-            data_dir: None,
-            mcp_port: 0,
-        }
-    }
-}
-
 pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
     let token = generate_token();
-    let data_dir = resolve_data_dir(config.data_dir.as_ref(), config.standalone)?;
-    std::fs::create_dir_all(&data_dir)?;
-    let db_path = data_dir.join("ferrite.db");
-    tracing::info!("Data dir: {}", data_dir.display());
+    let db_path = config.db_file;
+    if let Some(parent) = db_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    tracing::info!("Database file: {}", db_path.display());
     let store = AppStore::open(&db_path)?;
     tracing::info!("Opened app database");
 
@@ -67,8 +58,8 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
     println!("FERRITE_TOKEN={token}");
     println!("FERRITE_READY");
 
-    let mcp_server = if config.mcp_port > 0 {
-        start_mcp_server(mcp_state_ref, config.mcp_port).await
+    let mcp_server = if let Some(port) = config.mcp_port {
+        start_mcp_server(mcp_state_ref, port).await
     } else {
         None
     };
@@ -149,21 +140,6 @@ async fn start_mcp_server(state: state::AppState, port: u16) -> Option<McpServer
             None
         }
     }
-}
-
-fn resolve_data_dir(explicit: Option<&PathBuf>, standalone: bool) -> anyhow::Result<PathBuf> {
-    if let Some(dir) = explicit {
-        return Ok(dir.clone());
-    }
-    if standalone {
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-        return Ok(exe_dir.join("ferrite-data"));
-    }
-    let base = dirs::data_dir().ok_or_else(|| anyhow::anyhow!("no data directory found"))?;
-    Ok(base.join("ferrite"))
 }
 
 async fn shutdown_signal() {

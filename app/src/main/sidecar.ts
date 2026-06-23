@@ -3,20 +3,13 @@ import { app } from 'electron'
 import { join } from 'path'
 import { createInterface } from 'readline'
 
-const FALLBACK_MCP_PORT = 26260
-
-function parseMcpPort(raw: string | undefined): number {
-  if (!raw) {
-    return FALLBACK_MCP_PORT
-  }
-  const parsed = Number.parseInt(raw, 10)
+export function mcpPort(): number {
+  const parsed = Number.parseInt(process.env['FERRITE_MCP_PORT'] ?? '', 10)
   if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
-    return FALLBACK_MCP_PORT
+    throw new Error('FERRITE_MCP_PORT must be set to a valid port number (1-65535)')
   }
   return parsed
 }
-
-export const DEFAULT_MCP_PORT = parseMcpPort(process.env['FERRITE_MCP_PORT'])
 
 export interface SidecarInfo {
   port: number
@@ -25,10 +18,9 @@ export interface SidecarInfo {
 }
 
 export interface SidecarOptions {
-  dataDir: string
+  dbPath: string
   dev: boolean
   mcpEnabled: boolean
-  mcpPort?: number
 }
 
 function getBinaryPath(): string {
@@ -46,12 +38,12 @@ export function startSidecar(options: SidecarOptions): Promise<SidecarInfo> {
     const binaryPath = getBinaryPath()
     console.log(`Starting Ferrite sidecar: ${binaryPath}`)
 
-    const args = ['--data-dir', options.dataDir]
+    const args = ['--db-file', options.dbPath]
     if (options.dev) {
       args.push('--dev')
     }
     if (options.mcpEnabled) {
-      args.push('--mcp-port', String(options.mcpPort ?? DEFAULT_MCP_PORT))
+      args.push('--mcp-port', String(mcpPort()))
     }
 
     const child = spawn(binaryPath, args, {

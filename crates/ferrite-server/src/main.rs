@@ -16,13 +16,13 @@ struct Cli {
     #[arg(long)]
     dev: bool,
 
-    /// Path to the data directory (default: OS app data dir)
-    #[arg(long, short = 'd')]
-    data_dir: Option<std::path::PathBuf>,
+    /// Path to the SQLite store file
+    #[arg(long)]
+    db_file: std::path::PathBuf,
 
-    /// MCP server port (0 to disable)
-    #[arg(long, default_value = "0")]
-    mcp_port: u16,
+    /// MCP server port (omit to disable)
+    #[arg(long)]
+    mcp_port: Option<u16>,
 }
 
 #[tokio::main]
@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
         port: cli.port,
         standalone: cli.standalone,
         dev: cli.dev,
-        data_dir: cli.data_dir,
+        db_file: cli.db_file,
         mcp_port: cli.mcp_port,
     })
     .await

@@ -18,17 +18,13 @@ const ferriteApi = {
   }): Promise<{ bytes: Uint8Array; contentType: string; filename: string }> =>
     ipcRenderer.invoke('ferrite:download-export', body),
   getDesktopState: (): Promise<{
-    dataDir: string
+    dbPath: string
     mcpEnabled: boolean
     mcpUrl: string | null
   }> => ipcRenderer.invoke('ferrite:desktop-state'),
-  switchDataDir: (): Promise<{
-    dataDir: string
-    mcpEnabled: boolean
-    mcpUrl: string | null
-  }> => ipcRenderer.invoke('ferrite:switch-data-dir'),
+  switchDatabase: (): Promise<void> => ipcRenderer.invoke('ferrite:switch-database'),
   setMcpEnabled: (enabled: boolean): Promise<{
-    dataDir: string
+    dbPath: string
     mcpEnabled: boolean
     mcpUrl: string | null
   }> => ipcRenderer.invoke('ferrite:set-mcp-enabled', enabled),

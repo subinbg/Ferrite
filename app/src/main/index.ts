@@ -1,13 +1,13 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron'
-import { join } from 'path'
+import { dirname, join } from 'path'
+import { mkdir } from 'fs/promises'
 import { is } from '@electron-toolkit/utils'
-import { DEFAULT_MCP_PORT, startSidecar, stopSidecar, SidecarInfo } from './sidecar'
-import { DesktopSettings, loadSettings, saveSettings } from './settings'
+import { startSidecar, stopSidecar, SidecarInfo, mcpPort } from './sidecar'
 
 let mainWindow: BrowserWindow | null = null
 let sidecar: SidecarInfo | null = null
-let settings: DesktopSettings = { mcpEnabled: true }
-let activeDataDir = ''
+let settings = { mcpEnabled: true }
+let activeDbPath = ''
 let isQuitting = false
 
 interface SidecarRequest {
@@ -26,25 +26,55 @@ interface ExportRequestBody {
 
 function getDesktopState() {
   return {
-    dataDir: activeDataDir,
+    dbPath: activeDbPath,
     mcpEnabled: settings.mcpEnabled,
-    mcpUrl: settings.mcpEnabled ? `http://127.0.0.1:${DEFAULT_MCP_PORT}/mcp` : null
+    mcpUrl: settings.mcpEnabled ? `http://127.0.0.1:${mcpPort()}/mcp` : null
   }
 }
 
-async function pickDataDir(defaultPath?: string): Promise<string | null> {
-  const result = await dialog.showOpenDialog({
-    title: 'Ferrite - Select Data Folder',
-    message: 'Choose a folder to store your connections, query history, and saved queries.',
+function cacheDirFor(dbPath: string): string {
+  return join(dirname(dbPath), '.ferrite-cache')
+}
+
+const DB_FILTERS = [
+  { name: 'Ferrite database', extensions: ['db', 'sqlite', 'sqlite3'] },
+  { name: 'All files', extensions: ['*'] }
+]
+
+async function pickExistingDb(defaultPath?: string): Promise<string | null> {
+  const options: Electron.OpenDialogOptions = {
+    title: 'Ferrite - Open Database',
+    message: 'Select a Ferrite database file to open.',
     buttonLabel: 'Open',
-    properties: ['openDirectory', 'createDirectory'],
-    defaultPath: defaultPath || app.getPath('documents')
-  })
+    defaultPath: defaultPath || app.getPath('documents'),
+    properties: ['openFile', 'createDirectory'],
+    filters: DB_FILTERS
+  }
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options)
 
   if (result.canceled || result.filePaths.length === 0) {
     return null
   }
   return result.filePaths[0]
+}
+
+async function createNewDb(defaultPath?: string): Promise<string | null> {
+  const result = await dialog.showSaveDialog({
+    title: 'Ferrite - New Database',
+    message: 'Choose where to create a new Ferrite database.',
+    buttonLabel: 'Create',
+    nameFieldLabel: 'Database',
+    defaultPath: defaultPath || join(app.getPath('documents'), 'ferrite.db'),
+    properties: ['createDirectory', 'showHiddenFiles'],
+    filters: DB_FILTERS
+  })
+
+  if (result.canceled || !result.filePath) {
+    return null
+  }
+  return result.filePath
 }
 
 async function pickSqliteFile(): Promise<string | null> {
@@ -68,28 +98,19 @@ async function pickSqliteFile(): Promise<string | null> {
   return result.filePaths[0]
 }
 
-async function resolveInitialDataDir(): Promise<string | null> {
-  if (process.env['FERRITE_DATA_DIR']) {
-    return process.env['FERRITE_DATA_DIR']
+async function resolveInitialDbPath(): Promise<string | null> {
+  if (process.env['FERRITE_DB_FILE']) {
+    return process.env['FERRITE_DB_FILE']
   }
-  if (settings.dataDir) {
-    return settings.dataDir
-  }
-  const picked = await pickDataDir()
-  if (picked) {
-    settings = { ...settings, dataDir: picked }
-    await saveSettings(settings)
-  }
-  return picked
+  return (await pickExistingDb()) ?? (await createNewDb())
 }
 
 async function startCurrentSidecar(): Promise<void> {
-  console.log(`Data dir: ${activeDataDir}`)
+  console.log(`Database file: ${activeDbPath}`)
   sidecar = await startSidecar({
-    dataDir: activeDataDir,
+    dbPath: activeDbPath,
     dev: is.dev,
-    mcpEnabled: settings.mcpEnabled,
-    mcpPort: DEFAULT_MCP_PORT
+    mcpEnabled: settings.mcpEnabled
   })
   console.log(`Sidecar running on port ${sidecar.port}`)
 }
@@ -104,17 +125,24 @@ async function restartSidecar(): Promise<void> {
   mainWindow?.webContents.reload()
 }
 
-async function switchDataDir(): Promise<ReturnType<typeof getDesktopState>> {
-  const picked = await pickDataDir(activeDataDir)
-  if (!picked) {
-    return getDesktopState()
+async function switchDatabase(mode: 'open' | 'new' = 'open'): Promise<void> {
+  const picked = mode === 'new'
+    ? await createNewDb(activeDbPath)
+    : await pickExistingDb(activeDbPath)
+  if (!picked || picked === activeDbPath) {
+    return
   }
 
-  activeDataDir = picked
-  settings = { ...settings, dataDir: picked }
-  await saveSettings(settings)
-  await restartSidecar()
-  return getDesktopState()
+  process.env['FERRITE_DB_FILE'] = picked
+  app.relaunch()
+
+  isQuitting = true
+  const current = sidecar
+  sidecar = null
+  if (current) {
+    await stopSidecar(current)
+  }
+  app.exit(0)
 }
 
 async function setMcpEnabled(enabled: boolean): Promise<ReturnType<typeof getDesktopState>> {
@@ -123,7 +151,6 @@ async function setMcpEnabled(enabled: boolean): Promise<ReturnType<typeof getDes
   }
 
   settings = { ...settings, mcpEnabled: enabled }
-  await saveSettings(settings)
   await restartSidecar()
   installMenu()
   return getDesktopState()
@@ -163,7 +190,7 @@ function filenameFromDisposition(disposition: string | null, fallback: string): 
 function installIpcHandlers(): void {
   ipcMain.handle('ferrite:desktop-state', () => getDesktopState())
 
-  ipcMain.handle('ferrite:switch-data-dir', async () => switchDataDir())
+  ipcMain.handle('ferrite:switch-database', async () => switchDatabase())
 
   ipcMain.handle('ferrite:set-mcp-enabled', async (_event, enabled: boolean) => {
     return setMcpEnabled(enabled)
@@ -228,10 +255,20 @@ function installMenu(): void {
       label: 'File',
       submenu: [
         {
-          label: 'Switch Data Folder...',
+          label: 'Open Database...',
           click: async () => {
             try {
-              await switchDataDir()
+              await switchDatabase('open')
+            } catch (err) {
+              dialog.showErrorBox('Ferrite', String(err))
+            }
+          }
+        },
+        {
+          label: 'New Database...',
+          click: async () => {
+            try {
+              await switchDatabase('new')
             } catch (err) {
               dialog.showErrorBox('Ferrite', String(err))
             }
@@ -277,13 +314,16 @@ function installEditableContextMenu(window: BrowserWindow): void {
 }
 
 async function createWindow(): Promise<void> {
-  settings = await loadSettings()
-  const dataDir = await resolveInitialDataDir()
-  if (!dataDir) {
+  const dbPath = await resolveInitialDbPath()
+  if (!dbPath) {
     app.quit()
     return
   }
-  activeDataDir = dataDir
+  activeDbPath = dbPath
+
+  const cacheDir = cacheDirFor(dbPath)
+  await mkdir(cacheDir, { recursive: true })
+  app.setPath('sessionData', cacheDir)
 
   try {
     await startCurrentSidecar()
