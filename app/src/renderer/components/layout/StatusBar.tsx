@@ -2,7 +2,7 @@ import { useConnections } from '../../api/connections'
 import { useTabsStore } from '../../stores/tabs'
 import { useResultsStore } from '../../stores/results'
 
-export function StatusBar(): JSX.Element {
+export function StatusBar() {
   const { data: connections } = useConnections()
   const connectedCount = connections?.filter((c) => c.connected).length ?? 0
   const activeTabId = useTabsStore((s) => s.activeTabId)
@@ -40,7 +40,7 @@ export function StatusBar(): JSX.Element {
   )
 }
 
-function Dot(): JSX.Element {
+function Dot() {
   return <span style={{ color: 'var(--border)' }}>|</span>
 }
 

@@ -62,7 +62,10 @@ impl AppStore {
         let migrations: Vec<(&str, &str)> = vec![
             ("001_init", include_str!("migrations/001_init.sql")),
             ("002_fts", include_str!("migrations/002_fts.sql")),
-            ("003_activity_log", include_str!("migrations/003_activity_log.sql")),
+            (
+                "003_activity_log",
+                include_str!("migrations/003_activity_log.sql"),
+            ),
         ];
 
         for (name, sql) in migrations {
@@ -76,10 +79,8 @@ impl AppStore {
                 self.conn
                     .execute_batch(sql)
                     .map_err(|e| StoreError::Migration(format!("{name}: {e}")))?;
-                self.conn.execute(
-                    "INSERT INTO _migrations (name) VALUES (?1)",
-                    [name],
-                )?;
+                self.conn
+                    .execute("INSERT INTO _migrations (name) VALUES (?1)", [name])?;
                 tracing::info!("Applied migration: {name}");
             }
         }
@@ -112,7 +113,7 @@ mod tests {
             .conn()
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 2);
+        assert_eq!(count, 3);
     }
 
     #[test]

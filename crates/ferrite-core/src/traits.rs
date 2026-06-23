@@ -11,8 +11,7 @@ pub trait DatabaseDriver: Send + Sync {
         &self,
     ) -> impl Future<Output = Result<std::time::Duration, crate::FerriteError>> + Send;
 
-    fn get_schemas(&self)
-        -> impl Future<Output = Result<Vec<String>, crate::FerriteError>> + Send;
+    fn get_schemas(&self) -> impl Future<Output = Result<Vec<String>, crate::FerriteError>> + Send;
 
     fn get_tables(
         &self,

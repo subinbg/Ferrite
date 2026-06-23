@@ -1,9 +1,5 @@
 const getConfig = () => {
-  // Electron mode: preload exposes window.ferrite
-  if (window.ferrite?.serverUrl) {
-    return { serverUrl: window.ferrite.serverUrl, token: window.ferrite.token }
-  }
-  // Standalone mode: API is on the same origin, no auth token needed
+  // Standalone browser mode: API is on the same origin.
   return { serverUrl: window.location.origin, token: '' }
 }
 
@@ -11,6 +7,19 @@ export async function apiRequest<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
+  if (window.ferrite?.requestJson) {
+    const body = typeof options.body === 'string'
+      ? JSON.parse(options.body)
+      : options.body
+
+    return window.ferrite.requestJson<T>({
+      path,
+      method: options.method,
+      body,
+      headers: options.headers as Record<string, string> | undefined
+    })
+  }
+
   const { serverUrl, token } = getConfig()
   const url = `${serverUrl}${path}`
 

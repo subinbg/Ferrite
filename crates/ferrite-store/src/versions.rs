@@ -93,7 +93,10 @@ impl AppStore {
                  ORDER BY rank
                  LIMIT ?2 OFFSET ?3",
             )?;
-            let rows = stmt.query_map(rusqlite::params![query, limit as i64, offset as i64], map_version)?;
+            let rows = stmt.query_map(
+                rusqlite::params![query, limit as i64, offset as i64],
+                map_version,
+            )?;
             return rows.collect::<Result<Vec<_>, _>>().map_err(StoreError::Db);
         }
 
@@ -105,7 +108,11 @@ impl AppStore {
         rows.collect::<Result<Vec<_>, _>>().map_err(StoreError::Db)
     }
 
-    pub fn update_version(&self, id: &str, update: &VersionUpdate) -> Result<VersionRecord, StoreError> {
+    pub fn update_version(
+        &self,
+        id: &str,
+        update: &VersionUpdate,
+    ) -> Result<VersionRecord, StoreError> {
         self.conn().execute(
             "UPDATE query_versions SET title = COALESCE(?1, title), label = COALESCE(?2, label), notes = COALESCE(?3, notes) WHERE id = ?4",
             rusqlite::params![update.title, update.label, update.notes, id],
@@ -114,7 +121,9 @@ impl AppStore {
     }
 
     pub fn delete_version(&self, id: &str) -> Result<bool, StoreError> {
-        let affected = self.conn().execute("DELETE FROM query_versions WHERE id = ?1", [id])?;
+        let affected = self
+            .conn()
+            .execute("DELETE FROM query_versions WHERE id = ?1", [id])?;
         Ok(affected > 0)
     }
 }

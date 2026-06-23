@@ -1,6 +1,7 @@
 use axum::{
     Router,
     extract::State,
+    http::HeaderValue,
     middleware,
     routing::{get, post, put},
 };
@@ -11,9 +12,15 @@ use tower_http::{
 };
 
 use crate::auth::auth_middleware;
-use axum::routing::delete;
 use crate::routes::{activity, connections, export, history, query, schema, settings};
 use crate::state::AppState;
+use axum::routing::delete;
+
+#[derive(Debug, Clone, Copy)]
+pub struct RouterConfig {
+    pub standalone: bool,
+    pub dev: bool,
+}
 
 async fn health(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
     axum::Json(json!({
@@ -22,21 +29,28 @@ async fn health(State(state): State<AppState>) -> axum::Json<serde_json::Value> 
     }))
 }
 
-pub fn create_router(state: AppState, standalone: bool) -> Router {
-    // Restrict CORS to localhost only — Ferrite binds to 127.0.0.1
-    let cors = CorsLayer::new()
-        .allow_methods(Any)
-        .allow_headers(Any)
-        .allow_origin([
-            "http://127.0.0.1".parse().unwrap(),
-            "http://localhost".parse().unwrap(),
-            // Vite dev server
+pub fn create_router(state: AppState, config: RouterConfig) -> Router {
+    let mut allowed_origins: Vec<HeaderValue> = vec![
+        "http://127.0.0.1".parse().unwrap(),
+        "http://localhost".parse().unwrap(),
+    ];
+    if config.dev {
+        allowed_origins.extend([
             "http://localhost:5173".parse().unwrap(),
             "http://127.0.0.1:5173".parse().unwrap(),
         ]);
+    }
+
+    let cors = CorsLayer::new()
+        .allow_methods(Any)
+        .allow_headers(Any)
+        .allow_origin(allowed_origins);
 
     let connection_routes = Router::new()
-        .route("/", get(connections::list_connections).post(connections::create_connection))
+        .route(
+            "/",
+            get(connections::list_connections).post(connections::create_connection),
+        )
         .route(
             "/{id}",
             put(connections::update_connection).delete(connections::delete_connection),
@@ -63,8 +77,14 @@ pub fn create_router(state: AppState, standalone: bool) -> Router {
         .route("/{id}", delete(query::delete_history));
 
     let version_routes = Router::new()
-        .route("/", get(history::list_versions).post(history::create_version))
-        .route("/{id}", put(history::update_version).delete(history::delete_version))
+        .route(
+            "/",
+            get(history::list_versions).post(history::create_version),
+        )
+        .route(
+            "/{id}",
+            put(history::update_version).delete(history::delete_version),
+        )
         .route("/{id}/diff/{other_id}", get(history::diff_versions));
 
     let api_routes = Router::new()
@@ -78,11 +98,10 @@ pub fn create_router(state: AppState, standalone: bool) -> Router {
         .route("/activities", get(activity::list_activities))
         .route("/activities/{id}", delete(activity::delete_activity));
 
-    let mut router = Router::new()
-        .nest("/api", api_routes);
+    let mut router = Router::new().nest("/api", api_routes);
 
     // In standalone mode, serve embedded frontend assets
-    if standalone {
+    if config.standalone {
         router = router.fallback(get(crate::embedded::serve_frontend));
     }
 

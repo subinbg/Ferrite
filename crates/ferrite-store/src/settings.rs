@@ -2,11 +2,11 @@ use crate::store::{AppStore, StoreError};
 
 impl AppStore {
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, StoreError> {
-        let result = self.conn().query_row(
-            "SELECT value FROM settings WHERE key = ?1",
-            [key],
-            |row| row.get(0),
-        );
+        let result =
+            self.conn()
+                .query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+                    row.get(0)
+                });
         match result {
             Ok(val) => Ok(Some(val)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),

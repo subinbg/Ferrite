@@ -13,7 +13,10 @@ impl Default for ExcelOptions {
     }
 }
 
-pub fn export_excel(result: &QueryResult, options: &ExcelOptions) -> Result<Vec<u8>, anyhow::Error> {
+pub fn export_excel(
+    result: &QueryResult,
+    options: &ExcelOptions,
+) -> Result<Vec<u8>, anyhow::Error> {
     let mut workbook = Workbook::new();
     let sheet = workbook.add_worksheet();
     sheet.set_name(&options.sheet_name)?;
@@ -73,8 +76,16 @@ mod tests {
         let result = QueryResult {
             execution_id: Uuid::new_v4(),
             columns: vec![
-                ColumnMeta { name: "id".into(), data_type: "int4".into(), nullable: false },
-                ColumnMeta { name: "name".into(), data_type: "text".into(), nullable: true },
+                ColumnMeta {
+                    name: "id".into(),
+                    data_type: "int4".into(),
+                    nullable: false,
+                },
+                ColumnMeta {
+                    name: "name".into(),
+                    data_type: "text".into(),
+                    nullable: true,
+                },
             ],
             rows: vec![
                 vec![serde_json::json!(1), serde_json::json!("Alice")],

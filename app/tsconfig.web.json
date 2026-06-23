@@ -11,11 +11,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "./out",
-    "declaration": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/renderer/*"]
-    }
+    "declaration": true
   },
-  "include": ["src/renderer/**/*"]
+  "include": ["src/renderer/**/*", "src/preload/index.d.ts"]
 }

@@ -1,9 +1,4 @@
-use axum::{
-    Json,
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-};
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use ferrite_core::types::query::QueryRequest;
 use ferrite_store::activity::NewActivity;
 use ferrite_store::history::NewHistoryEntry;
@@ -22,7 +17,13 @@ pub async fn execute_query(
     let dialect = driver.dialect().to_string();
 
     let result = driver
-        .execute(&req.sql, &req.bind_variables, req.limit, req.offset, req.timeout_seconds)
+        .execute(
+            &req.sql,
+            &req.bind_variables,
+            req.limit,
+            req.offset,
+            req.timeout_seconds,
+        )
         .await;
 
     // Record in history

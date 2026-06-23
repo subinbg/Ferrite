@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Zap, Loader2 } from 'lucide-react'
+import { X, Zap, Loader2, FolderOpen } from 'lucide-react'
 import { useCreateConnection, useTestConnection } from '../../api/connections'
 import type { DatabaseDialect } from '../../types/connection'
 
@@ -7,7 +7,7 @@ interface Props {
   onClose: () => void
 }
 
-export function ConnectionForm({ onClose }: Props): JSX.Element {
+export function ConnectionForm({ onClose }: Props) {
   const [name, setName] = useState('')
   const [dialect, setDialect] = useState<DatabaseDialect>('postgresql')
   const [host, setHost] = useState('localhost')
@@ -59,6 +59,13 @@ export function ConnectionForm({ onClose }: Props): JSX.Element {
       onClose()
     } catch (err: any) {
       setTestResult({ ok: false, message: err.message })
+    }
+  }
+
+  const handlePickSqliteFile = async () => {
+    const filePath = await window.ferrite?.pickSqliteFile?.()
+    if (filePath) {
+      setDbName(filePath)
     }
   }
 
@@ -129,12 +136,24 @@ export function ConnectionForm({ onClose }: Props): JSX.Element {
           )}
 
           <Field label={isSqlite ? 'Database File Path' : 'Database'}>
-            <input
-              value={dbName}
-              onChange={(e) => setDbName(e.target.value)}
-              placeholder={isSqlite ? '/path/to/database.db' : 'postgres'}
-              style={inputStyle}
-            />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                value={dbName}
+                onChange={(e) => setDbName(e.target.value)}
+                placeholder={isSqlite ? '/path/to/database.db' : 'postgres'}
+                style={inputStyle}
+              />
+              {isSqlite && (
+                <button
+                  type="button"
+                  onClick={handlePickSqliteFile}
+                  style={iconBtnStyle}
+                  title="Browse for SQLite database"
+                >
+                  <FolderOpen size={14} />
+                </button>
+              )}
+            </div>
           </Field>
 
           <Field label="Color">
@@ -204,7 +223,7 @@ function Field({
   label: string
   children: React.ReactNode
   style?: React.CSSProperties
-}): JSX.Element {
+}) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', ...style }}>
       <label style={{ fontSize: '11px', color: 'var(--muted-foreground)', fontWeight: 500 }}>
@@ -296,4 +315,13 @@ const secondaryBtnStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '6px'
+}
+
+const iconBtnStyle: React.CSSProperties = {
+  ...secondaryBtnStyle,
+  width: '34px',
+  height: '32px',
+  padding: 0,
+  flexShrink: 0,
+  justifyContent: 'center'
 }

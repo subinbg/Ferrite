@@ -2,6 +2,7 @@ use ferrite_core::FerriteError;
 use ferrite_core::types::connection::ConnectParams;
 use ferrite_core::types::query::{ColumnMeta, ExplainResult, ExplainSummary, QueryResult};
 use ferrite_core::types::schema::{ColumnInfo, TableInfo};
+use futures::TryStreamExt;
 use sqlx::ConnectOptions;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use sqlx::{Column, Row, TypeInfo};
@@ -36,7 +37,9 @@ impl SqliteDriver {
         self.pool.close().await;
     }
 
-    pub async fn test_connection(params: &ConnectParams) -> Result<std::time::Duration, FerriteError> {
+    pub async fn test_connection(
+        params: &ConnectParams,
+    ) -> Result<std::time::Duration, FerriteError> {
         let start = Instant::now();
         let opts = SqliteConnectOptions::from_str(&format!("sqlite:{}", params.database))
             .map_err(|e| FerriteError::Connection(e.to_string()))?
@@ -126,56 +129,66 @@ impl SqliteDriver {
 
         let processed_sql = process_bind_variables_sqlite(sql, bind_variables)?;
 
-        let timeout = std::time::Duration::from_secs(if timeout_seconds > 0 { timeout_seconds } else { 30 });
-        let rows = tokio::time::timeout(
-            timeout,
-            sqlx::query(&processed_sql).fetch_all(&self.pool),
-        )
-        .await
-        .map_err(|_| FerriteError::QueryTimeout(timeout.as_secs()))?
-        .map_err(|e| FerriteError::Database(e.to_string()))?;
+        let timeout = std::time::Duration::from_secs(if timeout_seconds > 0 {
+            timeout_seconds
+        } else {
+            30
+        });
+        let max_seen = offset.saturating_add(limit).saturating_add(1);
+        let fetch = async {
+            let mut stream = sqlx::query(&processed_sql).fetch(&self.pool);
+            let mut columns: Option<Vec<ColumnMeta>> = None;
+            let mut data_rows = Vec::new();
+            let mut seen = 0usize;
+            let mut truncated = false;
+
+            while let Some(row) = stream
+                .try_next()
+                .await
+                .map_err(|e| FerriteError::Database(e.to_string()))?
+            {
+                if columns.is_none() {
+                    columns = Some(
+                        row.columns()
+                            .iter()
+                            .map(|c| ColumnMeta {
+                                name: c.name().to_string(),
+                                data_type: c.type_info().name().to_string(),
+                                nullable: true,
+                            })
+                            .collect(),
+                    );
+                }
+
+                if seen >= offset && data_rows.len() < limit {
+                    data_rows.push(sqlite_row_to_json(&row));
+                }
+
+                seen += 1;
+                if seen >= max_seen {
+                    truncated = true;
+                    break;
+                }
+            }
+
+            Ok::<_, FerriteError>((columns.unwrap_or_default(), data_rows, seen, truncated))
+        };
+
+        let (columns, data_rows, seen, truncated) =
+            tokio::time::timeout(timeout, fetch)
+                .await
+                .map_err(|_| FerriteError::QueryTimeout(timeout.as_secs()))??;
 
         let duration_ms = start.elapsed().as_millis() as u64;
-
-        if rows.is_empty() {
-            return Ok(QueryResult {
-                execution_id,
-                columns: vec![],
-                rows: vec![],
-                row_count: 0,
-                total_count: Some(0),
-                duration_ms,
-                truncated: false,
-            });
-        }
-
-        let columns: Vec<ColumnMeta> = rows[0]
-            .columns()
-            .iter()
-            .map(|c| ColumnMeta {
-                name: c.name().to_string(),
-                data_type: c.type_info().name().to_string(),
-                nullable: true,
-            })
-            .collect();
-
-        let total_count = rows.len();
-        let data_rows: Vec<Vec<serde_json::Value>> = rows
-            .iter()
-            .skip(offset)
-            .take(limit)
-            .map(|row| sqlite_row_to_json(row))
-            .collect();
-
         let row_count = data_rows.len();
-        let truncated = total_count > offset + limit;
+        let total_count = if truncated { None } else { Some(seen) };
 
         Ok(QueryResult {
             execution_id,
             columns,
             rows: data_rows,
             row_count,
-            total_count: Some(total_count),
+            total_count,
             duration_ms,
             truncated,
         })
@@ -233,7 +246,10 @@ fn process_bind_variables_sqlite(
     for cap in re.captures_iter(sql) {
         let name = &cap[1];
         if let Some(value) = binds.get(name) {
-            replacements.push((cap.get(0).unwrap().range(), json_to_sql_literal_sqlite(value)));
+            replacements.push((
+                cap.get(0).unwrap().range(),
+                json_to_sql_literal_sqlite(value),
+            ));
         }
     }
 

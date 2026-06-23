@@ -26,13 +26,13 @@ impl DatabaseDriver {
             DatabaseDialect::PostgreSQL => {
                 Ok(Self::Postgres(PostgresDriver::connect(params).await?))
             }
-            DatabaseDialect::SQLite => {
-                Ok(Self::Sqlite(SqliteDriver::connect(params).await?))
-            }
+            DatabaseDialect::SQLite => Ok(Self::Sqlite(SqliteDriver::connect(params).await?)),
         }
     }
 
-    pub async fn test_connection(params: &ConnectParams) -> Result<std::time::Duration, FerriteError> {
+    pub async fn test_connection(
+        params: &ConnectParams,
+    ) -> Result<std::time::Duration, FerriteError> {
         match params.dialect {
             DatabaseDialect::PostgreSQL => PostgresDriver::test_connection(params).await,
             DatabaseDialect::SQLite => SqliteDriver::test_connection(params).await,
@@ -73,8 +73,14 @@ impl DatabaseDriver {
         timeout_seconds: u64,
     ) -> Result<QueryResult, FerriteError> {
         match self {
-            Self::Postgres(d) => d.execute(sql, bind_variables, limit, offset, timeout_seconds).await,
-            Self::Sqlite(d) => d.execute(sql, bind_variables, limit, offset, timeout_seconds).await,
+            Self::Postgres(d) => {
+                d.execute(sql, bind_variables, limit, offset, timeout_seconds)
+                    .await
+            }
+            Self::Sqlite(d) => {
+                d.execute(sql, bind_variables, limit, offset, timeout_seconds)
+                    .await
+            }
         }
     }
 

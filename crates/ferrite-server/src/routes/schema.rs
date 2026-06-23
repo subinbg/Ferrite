@@ -18,13 +18,12 @@ pub struct SchemaQuery {
 
 pub async fn list_schemas(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let uuid = Uuid::parse_str(&id).unwrap_or_default();
     let pool_mgr = state.pool_manager.read().await;
 
     let driver = pool_mgr
-        .get(&uuid)
+        .get(&id)
         .ok_or((StatusCode::BAD_REQUEST, "Not connected".to_string()))?;
 
     let schemas = driver
@@ -37,15 +36,14 @@ pub async fn list_schemas(
 
 pub async fn list_tables(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(id): Path<Uuid>,
     Query(params): Query<SchemaQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let uuid = Uuid::parse_str(&id).unwrap_or_default();
     let schema = params.schema.as_deref().unwrap_or("public");
     let pool_mgr = state.pool_manager.read().await;
 
     let driver = pool_mgr
-        .get(&uuid)
+        .get(&id)
         .ok_or((StatusCode::BAD_REQUEST, "Not connected".to_string()))?;
 
     let tables = driver
@@ -58,15 +56,14 @@ pub async fn list_tables(
 
 pub async fn list_columns(
     State(state): State<AppState>,
-    Path((id, table)): Path<(String, String)>,
+    Path((id, table)): Path<(Uuid, String)>,
     Query(params): Query<SchemaQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let uuid = Uuid::parse_str(&id).unwrap_or_default();
     let schema = params.schema.as_deref().unwrap_or("public");
     let pool_mgr = state.pool_manager.read().await;
 
     let driver = pool_mgr
-        .get(&uuid)
+        .get(&id)
         .ok_or((StatusCode::BAD_REQUEST, "Not connected".to_string()))?;
 
     let columns = driver
@@ -80,15 +77,14 @@ pub async fn list_columns(
 /// Returns all tables and their columns in one request (for autocompletion).
 pub async fn full_schema(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(id): Path<Uuid>,
     Query(params): Query<SchemaQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let uuid = Uuid::parse_str(&id).unwrap_or_default();
     let schema = params.schema.as_deref().unwrap_or("public");
     let pool_mgr = state.pool_manager.read().await;
 
     let driver = pool_mgr
-        .get(&uuid)
+        .get(&id)
         .ok_or((StatusCode::BAD_REQUEST, "Not connected".to_string()))?;
 
     let tables = driver

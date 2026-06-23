@@ -43,7 +43,9 @@ pub async fn list_connections(
     let connections: Vec<ConnectionResponse> = records
         .into_iter()
         .map(|r| {
-            let id = Uuid::parse_str(&r.id).unwrap_or_default();
+            let connected = Uuid::parse_str(&r.id)
+                .ok()
+                .is_some_and(|id| pool_mgr.is_connected(&id));
             ConnectionResponse {
                 id: r.id,
                 name: r.name,
@@ -57,7 +59,7 @@ pub async fn list_connections(
                 sort_order: r.sort_order,
                 created_at: r.created_at,
                 updated_at: r.updated_at,
-                connected: pool_mgr.is_connected(&id),
+                connected,
             }
         })
         .collect();
@@ -127,9 +129,10 @@ pub async fn create_connection(
 
 pub async fn update_connection(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(id): Path<Uuid>,
     Json(req): Json<ConnectionUpdate>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let id_string = id.to_string();
     let vault = state.vault.read().await;
     let vault = vault
         .as_ref()
@@ -147,7 +150,7 @@ pub async fn update_connection(
     let store = state.store.lock().await;
     let record = store
         .update_connection(
-            &id,
+            &id_string,
             req.name.as_deref(),
             req.host.as_deref(),
             req.port.map(|p| p as i64),
@@ -165,7 +168,6 @@ pub async fn update_connection(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let pool_mgr = state.pool_manager.read().await;
-    let uuid = Uuid::parse_str(&id).unwrap_or_default();
 
     Ok(Json(ConnectionResponse {
         id: record.id,
@@ -180,24 +182,22 @@ pub async fn update_connection(
         sort_order: record.sort_order,
         created_at: record.created_at,
         updated_at: record.updated_at,
-        connected: pool_mgr.is_connected(&uuid),
+        connected: pool_mgr.is_connected(&id),
     }))
 }
 
 pub async fn delete_connection(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    // Disconnect if connected
-    let uuid = Uuid::parse_str(&id).unwrap_or_default();
     {
         let mut pool_mgr = state.pool_manager.write().await;
-        pool_mgr.disconnect(&uuid).await;
+        pool_mgr.disconnect(&id).await;
     }
 
     let store = state.store.lock().await;
     store
-        .delete_connection(&id)
+        .delete_connection(&id.to_string())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -205,11 +205,16 @@ pub async fn delete_connection(
 
 pub async fn test_connection(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let params = build_connect_params(&state, &id).await?;
+    let id_string = id.to_string();
+    let params = build_connect_params(&state, &id_string).await?;
 
-    tracing::info!("Testing connection {id} (dialect={}, host={})", params.dialect, params.host);
+    tracing::info!(
+        "Testing connection {id} (dialect={}, host={})",
+        params.dialect,
+        params.host
+    );
     match ferrite_db::driver::DatabaseDriver::test_connection(&params).await {
         Ok(duration) => {
             tracing::info!("Connection test OK: {}ms", duration.as_millis());
@@ -232,14 +237,13 @@ pub async fn test_connection(
 
 pub async fn connect_connection(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let params = build_connect_params(&state, &id).await?;
-    let uuid = Uuid::parse_str(&id).unwrap_or_default();
+    let params = build_connect_params(&state, &id.to_string()).await?;
 
     let mut pool_mgr = state.pool_manager.write().await;
     pool_mgr
-        .connect(uuid, &params)
+        .connect(id, &params)
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
 
@@ -248,11 +252,10 @@ pub async fn connect_connection(
 
 pub async fn disconnect_connection(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let uuid = Uuid::parse_str(&id).unwrap_or_default();
     let mut pool_mgr = state.pool_manager.write().await;
-    pool_mgr.disconnect(&uuid).await;
+    pool_mgr.disconnect(&id).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -276,12 +279,7 @@ async fn build_connect_params(
     let dialect = match record.dialect.as_str() {
         "postgresql" => DatabaseDialect::PostgreSQL,
         "sqlite" => DatabaseDialect::SQLite,
-        other => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("Unknown dialect: {other}"),
-            ))
-        }
+        other => return Err((StatusCode::BAD_REQUEST, format!("Unknown dialect: {other}"))),
     };
 
     // Decrypt password
@@ -307,7 +305,11 @@ async fn build_connect_params(
         dialect,
         host: host.to_string(),
         port: record.port.unwrap_or(5432) as u16,
-        database: record.database_name.as_deref().unwrap_or("postgres").to_string(),
+        database: record
+            .database_name
+            .as_deref()
+            .unwrap_or("postgres")
+            .to_string(),
         username: record.username.as_deref().unwrap_or("postgres").to_string(),
         password,
         ssl_mode: record.ssl_mode.clone(),

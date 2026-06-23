@@ -8,7 +8,7 @@ import { ExportDialog } from '../results/ExportDialog'
 import { SaveDialog } from '../history/SaveDialog'
 import { BindVariablesDialog, extractBindVariables } from './BindVariablesDialog'
 
-export function EditorToolbar(): JSX.Element {
+export function EditorToolbar() {
   const [showExport, setShowExport] = useState(false)
   const [showSave, setShowSave] = useState(false)
   const [showBindVars, setShowBindVars] = useState<'execute' | 'explain' | null>(null)

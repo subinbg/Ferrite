@@ -1,7 +1,7 @@
 import { Plus, X } from 'lucide-react'
 import { useTabsStore } from '../../stores/tabs'
 
-export function EditorTabs(): JSX.Element {
+export function EditorTabs() {
   const tabs = useTabsStore((s) => s.tabs)
   const activeTabId = useTabsStore((s) => s.activeTabId)
   const setActiveTab = useTabsStore((s) => s.setActiveTab)

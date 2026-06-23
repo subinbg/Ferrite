@@ -53,8 +53,16 @@ mod tests {
         QueryResult {
             execution_id: Uuid::new_v4(),
             columns: vec![
-                ColumnMeta { name: "id".into(), data_type: "int4".into(), nullable: false },
-                ColumnMeta { name: "name".into(), data_type: "text".into(), nullable: true },
+                ColumnMeta {
+                    name: "id".into(),
+                    data_type: "int4".into(),
+                    nullable: false,
+                },
+                ColumnMeta {
+                    name: "name".into(),
+                    data_type: "text".into(),
+                    nullable: true,
+                },
             ],
             rows: vec![
                 vec![serde_json::json!(1), serde_json::json!("Alice")],
@@ -78,7 +86,14 @@ mod tests {
 
     #[test]
     fn test_csv_tab_delimited() {
-        let csv = export_csv(&sample_result(), &CsvOptions { delimiter: b'\t', include_headers: true }).unwrap();
+        let csv = export_csv(
+            &sample_result(),
+            &CsvOptions {
+                delimiter: b'\t',
+                include_headers: true,
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(csv).unwrap();
         assert!(s.contains("id\tname\n"));
     }

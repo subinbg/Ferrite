@@ -1,6 +1,6 @@
+use sqlparser::ast::Statement;
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
-use sqlparser::ast::Statement;
 
 /// Validates that a SQL string is strictly read-only using AST analysis.
 /// Returns Ok(()) if safe, Err(reason) if blocked.
@@ -11,8 +11,8 @@ pub fn validate_readonly_sql(sql: &str) -> Result<(), String> {
     }
 
     let dialect = PostgreSqlDialect {};
-    let statements = Parser::parse_sql(&dialect, trimmed)
-        .map_err(|e| format!("SQL parse error: {e}"))?;
+    let statements =
+        Parser::parse_sql(&dialect, trimmed).map_err(|e| format!("SQL parse error: {e}"))?;
 
     if statements.is_empty() {
         return Err("Empty query".to_string());
@@ -34,11 +34,20 @@ pub fn validate_readonly_sql(sql: &str) -> Result<(), String> {
     // Post-parse: block dangerous functions even in valid SELECT queries
     let upper = sql.to_uppercase();
     for func in [
-        "PG_SLEEP", "PG_TERMINATE_BACKEND", "PG_CANCEL_BACKEND",
-        "PG_READ_FILE", "PG_READ_BINARY_FILE", "PG_WRITE_FILE",
-        "PG_RELOAD_CONF", "PG_ROTATE_LOGFILE",
-        "LO_IMPORT", "LO_EXPORT", "LO_UNLINK",
-        "DBLINK", "DBLINK_EXEC", "DBLINK_CONNECT",
+        "PG_SLEEP",
+        "PG_TERMINATE_BACKEND",
+        "PG_CANCEL_BACKEND",
+        "PG_READ_FILE",
+        "PG_READ_BINARY_FILE",
+        "PG_WRITE_FILE",
+        "PG_RELOAD_CONF",
+        "PG_ROTATE_LOGFILE",
+        "LO_IMPORT",
+        "LO_EXPORT",
+        "LO_UNLINK",
+        "DBLINK",
+        "DBLINK_EXEC",
+        "DBLINK_CONNECT",
     ] {
         if upper.contains(func) {
             return Err(format!("Blocked function: {func}"));

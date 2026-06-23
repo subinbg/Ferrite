@@ -199,7 +199,8 @@ impl AppStore {
         );
         params.push(Box::new(id.to_owned()));
 
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         self.conn().execute(&sql, param_refs.as_slice())?;
 
         self.get_connection(id)
@@ -250,7 +251,19 @@ mod tests {
 
         // Update
         let updated = store
-            .update_connection(&record.id, Some("Renamed"), None, None, None, None, None, None, None, None, None)
+            .update_connection(
+                &record.id,
+                Some("Renamed"),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
             .unwrap();
         assert_eq!(updated.name, "Renamed");
 

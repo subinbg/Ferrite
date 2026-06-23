@@ -8,7 +8,7 @@ interface Props {
   onClose: () => void
 }
 
-export function ConnectionDetail({ connection, onClose }: Props): JSX.Element {
+export function ConnectionDetail({ connection, onClose }: Props) {
   const [name, setName] = useState(connection.name)
   const [color, setColor] = useState(connection.color || '#3b82f6')
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
@@ -160,7 +160,7 @@ export function ConnectionDetail({ connection, onClose }: Props): JSX.Element {
   )
 }
 
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }): JSX.Element {
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div style={rowStyle}>
       <span style={labelStyle}>{label}</span>

@@ -1,8 +1,8 @@
 use axum::{
+    Json,
     extract::State,
     http::{StatusCode, header},
     response::IntoResponse,
-    Json,
 };
 use ferrite_core::types::export::{ExportFormat, ExportRequest};
 use ferrite_export::{csv_export, excel_export, json_export};
@@ -20,7 +20,13 @@ pub async fn export_data(
         .ok_or((StatusCode::BAD_REQUEST, "Not connected".to_string()))?;
 
     let result = driver
-        .execute(&req.sql, &std::collections::HashMap::new(), 1_000_000, 0, 120)
+        .execute(
+            &req.sql,
+            &std::collections::HashMap::new(),
+            1_000_000,
+            0,
+            120,
+        )
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 

@@ -24,11 +24,7 @@ impl PoolManager {
         }
     }
 
-    pub async fn connect(
-        &mut self,
-        id: Uuid,
-        params: &ConnectParams,
-    ) -> Result<(), FerriteError> {
+    pub async fn connect(&mut self, id: Uuid, params: &ConnectParams) -> Result<(), FerriteError> {
         if self.drivers.contains_key(&id) {
             return Ok(());
         }

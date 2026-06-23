@@ -83,23 +83,28 @@ impl AppStore {
                  ORDER BY rank
                  LIMIT ?2 OFFSET ?3",
             )?;
-            let rows = stmt.query_map(rusqlite::params![query, limit as i64, offset as i64], |row| {
-                Ok(HistoryRecord {
-                    id: row.get(0)?,
-                    connection_id: row.get(1)?,
-                    sql_text: row.get(2)?,
-                    dialect: row.get(3)?,
-                    status: row.get(4)?,
-                    error_message: row.get(5)?,
-                    row_count: row.get(6)?,
-                    duration_ms: row.get(7)?,
-                    executed_at: row.get(8)?,
-                })
-            })?;
+            let rows = stmt.query_map(
+                rusqlite::params![query, limit as i64, offset as i64],
+                |row| {
+                    Ok(HistoryRecord {
+                        id: row.get(0)?,
+                        connection_id: row.get(1)?,
+                        sql_text: row.get(2)?,
+                        dialect: row.get(3)?,
+                        status: row.get(4)?,
+                        error_message: row.get(5)?,
+                        row_count: row.get(6)?,
+                        duration_ms: row.get(7)?,
+                        executed_at: row.get(8)?,
+                    })
+                },
+            )?;
             return rows.collect::<Result<Vec<_>, _>>().map_err(StoreError::Db);
         }
 
-        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(cid) = connection_id {
+        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(cid) =
+            connection_id
+        {
             (
                 "SELECT id, connection_id, sql_text, dialect, status, error_message, row_count, duration_ms, executed_at
                  FROM query_history WHERE connection_id = ?1
@@ -115,7 +120,8 @@ impl AppStore {
         };
 
         let mut stmt = self.conn().prepare(&sql)?;
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         let rows = stmt.query_map(param_refs.as_slice(), |row| {
             Ok(HistoryRecord {
                 id: row.get(0)?,

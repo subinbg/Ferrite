@@ -5,7 +5,7 @@ import { StatusBar } from './StatusBar'
 import { useLayoutStore } from '../../stores/layout'
 import { useThemeStore } from '../../stores/theme'
 
-export function AppLayout({ children }: { children: React.ReactNode }): JSX.Element {
+export function AppLayout({ children }: { children: React.ReactNode }) {
   const sidebarOpen = useLayoutStore((s) => s.sidebarOpen)
   const toggleSidebar = useLayoutStore((s) => s.toggleSidebar)
   const sidebarRef = useRef<HTMLDivElement>(null)

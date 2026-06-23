@@ -10,7 +10,6 @@ const darkTheme = themeQuartz.withParams({
   backgroundColor: '#0f0f11',
   foregroundColor: '#e4e4e7',
   headerBackgroundColor: '#18181b',
-  headerForegroundColor: '#e4e4e7',
   headerFontSize: 12,
   fontSize: 12,
   rowHoverColor: '#18181b',
@@ -28,7 +27,6 @@ const lightTheme = themeQuartz.withParams({
   backgroundColor: '#ffffff',
   foregroundColor: '#09090b',
   headerBackgroundColor: '#eaeaee',
-  headerForegroundColor: '#09090b',
   headerFontSize: 12,
   headerFontWeight: 600,
   fontSize: 12,
@@ -45,7 +43,7 @@ interface Props {
   result: QueryResult
 }
 
-export function DataGrid({ result }: Props): JSX.Element {
+export function DataGrid({ result }: Props) {
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
   const gridTheme = resolvedTheme === 'dark' ? darkTheme : lightTheme
   const columnDefs: ColDef[] = useMemo(

@@ -126,7 +126,11 @@ fn derive_key(password: &str, salt: &SaltString) -> Result<SecureKey, VaultError
     // Use low-level API to get raw key bytes
     let mut key_bytes = [0u8; 32];
     argon2
-        .hash_password_into(password.as_bytes(), salt.as_str().as_bytes(), &mut key_bytes)
+        .hash_password_into(
+            password.as_bytes(),
+            salt.as_str().as_bytes(),
+            &mut key_bytes,
+        )
         .map_err(|e| VaultError::KeyDerivation(e.to_string()))?;
 
     SecureKey::from_slice(&key_bytes).ok_or(VaultError::KeyDerivation("key size mismatch".into()))

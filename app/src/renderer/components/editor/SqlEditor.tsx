@@ -37,7 +37,7 @@ function getOrCreateModel(tabId: string, initialValue: string): monaco.editor.IT
   return model
 }
 
-export function SqlEditor(): JSX.Element {
+export function SqlEditor() {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
 

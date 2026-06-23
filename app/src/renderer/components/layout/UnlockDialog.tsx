@@ -6,7 +6,7 @@ interface Props {
   status: VaultStatus
 }
 
-export function UnlockDialog({ status }: Props): JSX.Element {
+export function UnlockDialog({ status }: Props) {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)

@@ -8,7 +8,7 @@ interface Props {
   onClose: () => void
 }
 
-export function SaveDialog({ connectionId, sql, onClose }: Props): JSX.Element {
+export function SaveDialog({ connectionId, sql, onClose }: Props) {
   const [title, setTitle] = useState('')
   const [label, setLabel] = useState('')
   const [notes, setNotes] = useState('')

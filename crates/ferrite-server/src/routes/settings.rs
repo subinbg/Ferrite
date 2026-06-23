@@ -1,9 +1,4 @@
-use axum::{
-    Json,
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-};
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 
 use crate::state::AppState;
@@ -119,8 +114,12 @@ pub async fn unlock_vault(
 
     let verification = EncryptedData { ciphertext, nonce };
 
-    let vault = MasterVault::unlock(&req.master_password, &salt, &verification)
-        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid master password".to_string()))?;
+    let vault = MasterVault::unlock(&req.master_password, &salt, &verification).map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            "Invalid master password".to_string(),
+        )
+    })?;
 
     let mut vault_lock = state.vault.write().await;
     *vault_lock = Some(vault);

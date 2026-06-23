@@ -106,13 +106,16 @@ impl AppStore {
         params.push(Box::new(offset as i64));
 
         let mut stmt = self.conn().prepare(&sql)?;
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         let rows = stmt.query_map(param_refs.as_slice(), map_activity)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(StoreError::Db)
     }
 
     pub fn delete_activity(&self, id: &str) -> Result<bool, StoreError> {
-        let affected = self.conn().execute("DELETE FROM activity_log WHERE id = ?1", [id])?;
+        let affected = self
+            .conn()
+            .execute("DELETE FROM activity_log WHERE id = ?1", [id])?;
         Ok(affected > 0)
     }
 }

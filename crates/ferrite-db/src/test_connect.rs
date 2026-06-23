@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod pg_connect_test {
-    use sqlx::postgres::{PgConnectOptions, PgSslMode};
     use sqlx::ConnectOptions;
+    use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
     #[tokio::test]
     async fn test_pg_real_connection() {

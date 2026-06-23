@@ -3,7 +3,7 @@ import { useResultsStore } from '../../stores/results'
 import { DataGrid } from './DataGrid'
 import { ExplainView } from './ExplainView'
 
-export function ResultPanel(): JSX.Element {
+export function ResultPanel() {
   const activeTabId = useTabsStore((s) => s.activeTabId)
   const result = useResultsStore((s) => s.getResult(activeTabId ?? ''))
   const setActiveResultTab = useResultsStore((s) => s.setActiveResultTab)

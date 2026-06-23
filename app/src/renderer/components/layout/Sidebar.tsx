@@ -9,7 +9,7 @@ import { useLayoutStore } from '../../stores/layout'
 
 type SidebarTab = 'explorer' | 'history' | 'saved'
 
-export function Sidebar(): JSX.Element {
+export function Sidebar() {
   const [showForm, setShowForm] = useState(false)
   const { data: connections, isLoading } = useConnections()
   const sidebarTab = useLayoutStore((s) => s.sidebarTab)
@@ -66,7 +66,7 @@ export function Sidebar(): JSX.Element {
 
 function TabButton({ active, onClick, title, children }: {
   active: boolean; onClick: () => void; title: string; children: React.ReactNode
-}): JSX.Element {
+}) {
   return (
     <button
       onClick={onClick}

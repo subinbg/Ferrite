@@ -48,8 +48,16 @@ mod tests {
         QueryResult {
             execution_id: Uuid::new_v4(),
             columns: vec![
-                ColumnMeta { name: "id".into(), data_type: "int4".into(), nullable: false },
-                ColumnMeta { name: "name".into(), data_type: "text".into(), nullable: true },
+                ColumnMeta {
+                    name: "id".into(),
+                    data_type: "int4".into(),
+                    nullable: false,
+                },
+                ColumnMeta {
+                    name: "name".into(),
+                    data_type: "text".into(),
+                    nullable: true,
+                },
             ],
             rows: vec![
                 vec![serde_json::json!(1), serde_json::json!("Alice")],

@@ -9,7 +9,7 @@ interface Props {
   onClose: () => void
 }
 
-export function ExportDialog({ connectionId, sql, onClose }: Props): JSX.Element {
+export function ExportDialog({ connectionId, sql, onClose }: Props) {
   const [format, setFormat] = useState<ExportFormat>('csv')
   const [delimiter, setDelimiter] = useState(',')
   const [includeHeaders, setIncludeHeaders] = useState(true)
@@ -117,7 +117,7 @@ export function ExportDialog({ connectionId, sql, onClose }: Props): JSX.Element
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
       <label style={{ fontSize: '11px', color: 'var(--muted-foreground)', fontWeight: 500 }}>{label}</label>

@@ -6,7 +6,7 @@ import { useTabsStore } from '../../stores/tabs'
 import { EditVersionDialog } from './EditVersionDialog'
 import type { QueryVersion } from '../../types/history'
 
-export function SavedQueries(): JSX.Element {
+export function SavedQueries() {
   const [search, setSearch] = useState('')
   const { data: versions, isLoading } = useVersions(search || undefined)
   const { data: connections } = useConnections()

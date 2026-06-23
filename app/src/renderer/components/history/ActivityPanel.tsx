@@ -15,7 +15,7 @@ const TYPE_CONFIGS: Record<string, { label: string; color: string; bgColor: stri
   mcp_tool: { label: 'MCP', color: '#a855f7', bgColor: 'rgba(168,85,247,0.15)' },
 }
 
-export function ActivityPanel(): JSX.Element {
+export function ActivityPanel() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const apiType = typeFilter === 'all' ? undefined : typeFilter
@@ -89,7 +89,7 @@ function ActivityEntry({
   connName: string | null
   onDelete: () => void
   onLoadSql?: () => void
-}): JSX.Element {
+}) {
   const [expanded, setExpanded] = useState(false)
   const typeConfig = TYPE_CONFIGS[a.activity_type] ?? { label: a.activity_type, color: 'var(--muted-foreground)', bgColor: 'var(--accent)' }
 

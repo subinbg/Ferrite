@@ -4,7 +4,7 @@ import { useHistory, useDeleteHistory } from '../../api/queries'
 import { useTabsStore } from '../../stores/tabs'
 import type { HistoryEntry } from '../../types/query'
 
-export function HistoryPanel(): JSX.Element {
+export function HistoryPanel() {
   const [search, setSearch] = useState('')
   const { data: entries, isLoading } = useHistory(undefined, search || undefined)
   const openTab = useTabsStore((s) => s.openTab)

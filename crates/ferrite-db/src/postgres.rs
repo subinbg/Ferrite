@@ -2,6 +2,7 @@ use ferrite_core::FerriteError;
 use ferrite_core::types::connection::ConnectParams;
 use ferrite_core::types::query::{ColumnMeta, ExplainResult, ExplainSummary, QueryResult};
 use ferrite_core::types::schema::{ColumnInfo, TableInfo};
+use futures::TryStreamExt;
 use sqlx::ConnectOptions;
 use sqlx::postgres::{PgConnectOptions, PgPool, PgSslMode};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
@@ -57,7 +58,9 @@ impl PostgresDriver {
         self.pool.close().await;
     }
 
-    pub async fn test_connection(params: &ConnectParams) -> Result<std::time::Duration, FerriteError> {
+    pub async fn test_connection(
+        params: &ConnectParams,
+    ) -> Result<std::time::Duration, FerriteError> {
         let start = Instant::now();
         let opts = build_pg_options(params);
         let pool = sqlx::postgres::PgPoolOptions::new()
@@ -176,58 +179,66 @@ impl PostgresDriver {
         // Single quotes are escaped via '' (SQL standard). This matches DataGrip/DBeaver behavior.
         let processed_sql = process_bind_variables(sql, bind_variables)?;
 
-        let timeout = std::time::Duration::from_secs(if timeout_seconds > 0 { timeout_seconds } else { 30 });
-        let rows = tokio::time::timeout(
-            timeout,
-            sqlx::query(&processed_sql).fetch_all(&self.pool),
-        )
-        .await
-        .map_err(|_| FerriteError::QueryTimeout(timeout.as_secs()))?
-        .map_err(|e| FerriteError::Database(e.to_string()))?;
+        let timeout = std::time::Duration::from_secs(if timeout_seconds > 0 {
+            timeout_seconds
+        } else {
+            30
+        });
+        let max_seen = offset.saturating_add(limit).saturating_add(1);
+        let fetch = async {
+            let mut stream = sqlx::query(&processed_sql).fetch(&self.pool);
+            let mut columns: Option<Vec<ColumnMeta>> = None;
+            let mut data_rows = Vec::new();
+            let mut seen = 0usize;
+            let mut truncated = false;
+
+            while let Some(row) = stream
+                .try_next()
+                .await
+                .map_err(|e| FerriteError::Database(e.to_string()))?
+            {
+                if columns.is_none() {
+                    columns = Some(
+                        row.columns()
+                            .iter()
+                            .map(|c| ColumnMeta {
+                                name: c.name().to_string(),
+                                data_type: c.type_info().name().to_string(),
+                                nullable: true,
+                            })
+                            .collect(),
+                    );
+                }
+
+                if seen >= offset && data_rows.len() < limit {
+                    data_rows.push(row_to_json_values(&row));
+                }
+
+                seen += 1;
+                if seen >= max_seen {
+                    truncated = true;
+                    break;
+                }
+            }
+
+            Ok::<_, FerriteError>((columns.unwrap_or_default(), data_rows, seen, truncated))
+        };
+
+        let (columns, data_rows, seen, truncated) =
+            tokio::time::timeout(timeout, fetch)
+                .await
+                .map_err(|_| FerriteError::QueryTimeout(timeout.as_secs()))??;
 
         let duration_ms = start.elapsed().as_millis() as u64;
-
-        if rows.is_empty() {
-            return Ok(QueryResult {
-                execution_id,
-                columns: vec![],
-                rows: vec![],
-                row_count: 0,
-                total_count: Some(0),
-                duration_ms,
-                truncated: false,
-            });
-        }
-
-        // Extract column metadata from first row
-        let columns: Vec<ColumnMeta> = rows[0]
-            .columns()
-            .iter()
-            .map(|c| ColumnMeta {
-                name: c.name().to_string(),
-                data_type: c.type_info().name().to_string(),
-                nullable: true, // PgRow doesn't expose nullability per-column easily
-            })
-            .collect();
-
-        // Convert rows to JSON values
-        let total_count = rows.len();
-        let data_rows: Vec<Vec<serde_json::Value>> = rows
-            .iter()
-            .skip(offset)
-            .take(limit)
-            .map(|row| row_to_json_values(row))
-            .collect();
-
         let row_count = data_rows.len();
-        let truncated = total_count > offset + limit;
+        let total_count = if truncated { None } else { Some(seen) };
 
         Ok(QueryResult {
             execution_id,
             columns,
             rows: data_rows,
             row_count,
-            total_count: Some(total_count),
+            total_count,
             duration_ms,
             truncated,
         })
@@ -350,21 +361,31 @@ fn pg_column_to_json(
             .map(serde_json::Value::Bool)
             .unwrap_or(serde_json::Value::Null),
 
-        "INT2" => row.try_get::<i16, _>(idx).ok()
+        "INT2" => row
+            .try_get::<i16, _>(idx)
+            .ok()
             .map(|v| serde_json::Value::Number((v as i64).into()))
             .unwrap_or(serde_json::Value::Null),
-        "INT4" | "SERIAL" => row.try_get::<i32, _>(idx).ok()
+        "INT4" | "SERIAL" => row
+            .try_get::<i32, _>(idx)
+            .ok()
             .map(|v| serde_json::Value::Number((v as i64).into()))
             .unwrap_or(serde_json::Value::Null),
-        "INT8" | "BIGSERIAL" => row.try_get::<i64, _>(idx).ok()
+        "INT8" | "BIGSERIAL" => row
+            .try_get::<i64, _>(idx)
+            .ok()
             .map(|v| serde_json::Value::Number(v.into()))
             .unwrap_or(serde_json::Value::Null),
 
-        "FLOAT4" => row.try_get::<f32, _>(idx).ok()
+        "FLOAT4" => row
+            .try_get::<f32, _>(idx)
+            .ok()
             .and_then(|v| serde_json::Number::from_f64(v as f64))
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
-        "FLOAT8" | "NUMERIC" => row.try_get::<f64, _>(idx).ok()
+        "FLOAT8" | "NUMERIC" => row
+            .try_get::<f64, _>(idx)
+            .ok()
             .and_then(|v| serde_json::Number::from_f64(v))
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
@@ -374,29 +395,43 @@ fn pg_column_to_json(
             .ok()
             .unwrap_or(serde_json::Value::Null),
 
-        "UUID" => row.try_get::<uuid::Uuid, _>(idx).ok()
+        "UUID" => row
+            .try_get::<uuid::Uuid, _>(idx)
+            .ok()
             .map(|v| serde_json::Value::String(v.to_string()))
             .unwrap_or(serde_json::Value::Null),
 
-        "TIMESTAMPTZ" => row.try_get::<chrono::DateTime<chrono::Utc>, _>(idx).ok()
+        "TIMESTAMPTZ" => row
+            .try_get::<chrono::DateTime<chrono::Utc>, _>(idx)
+            .ok()
             .map(|v| serde_json::Value::String(v.to_rfc3339()))
             .unwrap_or(serde_json::Value::Null),
-        "TIMESTAMP" => row.try_get::<chrono::NaiveDateTime, _>(idx).ok()
+        "TIMESTAMP" => row
+            .try_get::<chrono::NaiveDateTime, _>(idx)
+            .ok()
             .map(|v| serde_json::Value::String(v.format("%Y-%m-%d %H:%M:%S").to_string()))
             .unwrap_or(serde_json::Value::Null),
-        "DATE" => row.try_get::<chrono::NaiveDate, _>(idx).ok()
+        "DATE" => row
+            .try_get::<chrono::NaiveDate, _>(idx)
+            .ok()
             .map(|v| serde_json::Value::String(v.format("%Y-%m-%d").to_string()))
             .unwrap_or(serde_json::Value::Null),
-        "TIME" | "TIMETZ" => row.try_get::<chrono::NaiveTime, _>(idx).ok()
+        "TIME" | "TIMETZ" => row
+            .try_get::<chrono::NaiveTime, _>(idx)
+            .ok()
             .map(|v| serde_json::Value::String(v.format("%H:%M:%S").to_string()))
             .unwrap_or(serde_json::Value::Null),
 
-        "BYTEA" => row.try_get::<Vec<u8>, _>(idx).ok()
+        "BYTEA" => row
+            .try_get::<Vec<u8>, _>(idx)
+            .ok()
             .map(|v| serde_json::Value::String(format!("\\x{}", hex_encode(&v))))
             .unwrap_or(serde_json::Value::Null),
 
         // TEXT, VARCHAR, CHAR, NAME, and any other text-like types
-        _ => row.try_get::<String, _>(idx).ok()
+        _ => row
+            .try_get::<String, _>(idx)
+            .ok()
             .map(serde_json::Value::String)
             .unwrap_or_else(|| {
                 // Last resort: try to get the raw text representation
@@ -425,7 +460,9 @@ fn parse_pg_explain(plan: &serde_json::Value) -> ExplainSummary {
         .and_then(|v| v.as_f64());
 
     ExplainSummary {
-        total_cost: node.and_then(|n| n.get("Total Cost")).and_then(|v| v.as_f64()),
+        total_cost: node
+            .and_then(|n| n.get("Total Cost"))
+            .and_then(|v| v.as_f64()),
         execution_time_ms: execution_time,
         nodes: vec![], // Detailed node parsing can be added later
     }

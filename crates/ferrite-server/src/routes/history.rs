@@ -19,7 +19,9 @@ pub struct VersionsQuery {
     pub offset: usize,
 }
 
-fn default_limit() -> usize { 100 }
+fn default_limit() -> usize {
+    100
+}
 
 pub async fn list_versions(
     State(state): State<AppState>,

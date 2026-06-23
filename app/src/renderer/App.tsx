@@ -16,7 +16,7 @@ const queryClient = new QueryClient({
   }
 })
 
-function AppContent(): JSX.Element {
+function AppContent() {
   const { data: vaultStatus, isLoading, error } = useVaultStatus()
   const openTab = useTabsStore((s) => s.openTab)
   const closeTab = useTabsStore((s) => s.closeTab)
@@ -77,7 +77,7 @@ function AppContent(): JSX.Element {
   )
 }
 
-function App(): JSX.Element {
+function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppContent />

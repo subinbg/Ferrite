@@ -27,7 +27,7 @@ import { ConnectionDetail } from './ConnectionDetail'
 const expandedConnections = new Set<string>()
 const expandedTables = new Set<string>()
 
-export function ConnectionTree({ connections }: { connections: Connection[] }): JSX.Element {
+export function ConnectionTree({ connections }: { connections: Connection[] }) {
   return (
     <div>
       {connections.map((conn) => (
@@ -37,7 +37,7 @@ export function ConnectionTree({ connections }: { connections: Connection[] }): 
   )
 }
 
-function ConnectionNode({ connection }: { connection: Connection }): JSX.Element {
+function ConnectionNode({ connection }: { connection: Connection }) {
   const [expanded, setExpandedState] = useState(() => expandedConnections.has(connection.id))
   const [showDetail, setShowDetail] = useState(false)
   const [connectError, setConnectError] = useState<string | null>(null)
@@ -149,7 +149,7 @@ function ConnectionNode({ connection }: { connection: Connection }): JSX.Element
   )
 }
 
-function TablesSubtree({ connectionId }: { connectionId: string }): JSX.Element {
+function TablesSubtree({ connectionId }: { connectionId: string }) {
   const { data: tables, isLoading } = useTables(connectionId, 'public')
 
   if (isLoading) {
@@ -175,7 +175,7 @@ function TableNode({
 }: {
   connectionId: string
   table: TableInfo
-}): JSX.Element {
+}) {
   const tableKey = `${connectionId}:${table.name}`
   const [expanded, setExpandedState] = useState(() => expandedTables.has(tableKey))
   const openTab = useTabsStore((s) => s.openTab)
@@ -226,7 +226,7 @@ function ColumnsSubtree({
 }: {
   connectionId: string
   table: string
-}): JSX.Element {
+}) {
   const { data: columns, isLoading } = useColumns(connectionId, 'public', table)
 
   if (isLoading) {

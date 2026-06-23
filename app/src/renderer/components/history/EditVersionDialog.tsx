@@ -9,7 +9,7 @@ interface Props {
   onClose: () => void
 }
 
-export function EditVersionDialog({ version, onClose }: Props): JSX.Element {
+export function EditVersionDialog({ version, onClose }: Props) {
   const [title, setTitle] = useState(version.title)
   const [label, setLabel] = useState(version.label ?? '')
   const [notes, setNotes] = useState(version.notes ?? '')
@@ -71,7 +71,7 @@ export function EditVersionDialog({ version, onClose }: Props): JSX.Element {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
       <label style={{ fontSize: '11px', color: 'var(--muted-foreground)', fontWeight: 500 }}>{label}</label>
@@ -80,7 +80,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }): JSX.Element {
+function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div style={{ display: 'flex', gap: '8px', fontSize: '11px' }}>
       <span style={{ color: 'var(--muted-foreground)', minWidth: '70px' }}>{label}</span>

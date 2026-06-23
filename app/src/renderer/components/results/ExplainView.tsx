@@ -4,7 +4,7 @@ interface Props {
   result: ExplainResult
 }
 
-export function ExplainView({ result }: Props): JSX.Element {
+export function ExplainView({ result }: Props) {
   return (
     <div style={{ padding: '12px 16px' }}>
       {/* Summary */}

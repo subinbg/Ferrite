@@ -8,7 +8,7 @@ import { useConnections } from '../../api/connections'
 import { ConnectionForm } from '../sidebar/ConnectionForm'
 import { Database, Plus, Terminal } from 'lucide-react'
 
-export function EditorPanel(): JSX.Element {
+export function EditorPanel() {
   const tabs = useTabsStore((s) => s.tabs)
   const openTab = useTabsStore((s) => s.openTab)
   const { data: connections } = useConnections()
@@ -60,7 +60,7 @@ export function EditorPanel(): JSX.Element {
   return <EditorWithResults />
 }
 
-function EditorWithResults(): JSX.Element {
+function EditorWithResults() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [editorHeight, setEditorHeight] = useState<number | null>(null)
 
@@ -104,7 +104,7 @@ function EditorWithResults(): JSX.Element {
   )
 }
 
-function Kbd({ children }: { children: React.ReactNode }): JSX.Element {
+function Kbd({ children }: { children: React.ReactNode }) {
   return (
     <kbd style={{ display: 'inline-block', padding: '1px 5px', fontSize: 10, fontFamily: 'inherit', backgroundColor: 'var(--accent)', border: '1px solid var(--border)', borderRadius: 3, color: 'var(--foreground)', marginRight: 4 }}>
       {children}

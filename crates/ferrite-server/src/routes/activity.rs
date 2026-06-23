@@ -20,7 +20,9 @@ pub struct ActivityQuery {
     pub offset: usize,
 }
 
-fn default_limit() -> usize { 100 }
+fn default_limit() -> usize {
+    100
+}
 
 pub async fn list_activities(
     State(state): State<AppState>,

@@ -12,16 +12,23 @@ export async function downloadExport(
   format: ExportFormat,
   options: ExportOptions = {}
 ): Promise<void> {
-  const { serverUrl, token } = window.ferrite || {
-    serverUrl: 'http://127.0.0.1:3000',
-    token: ''
+  if (window.ferrite?.downloadExport) {
+    const result = await window.ferrite.downloadExport({
+      connection_id: connectionId,
+      sql,
+      format,
+      options: { ...options }
+    })
+    triggerDownload(new Blob([toArrayBuffer(result.bytes)], { type: result.contentType }), result.filename)
+    return
   }
+
+  const serverUrl = window.location.origin
 
   const response = await fetch(`${serverUrl}/api/export`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       connection_id: connectionId,
@@ -40,7 +47,16 @@ export async function downloadExport(
   const disposition = response.headers.get('content-disposition')
   const filename = disposition?.match(/filename="(.+)"/)?.[1] ?? `export.${format}`
 
-  // Trigger browser download
+  triggerDownload(blob, filename)
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(copy).set(bytes)
+  return copy
+}
+
+function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

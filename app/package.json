@@ -6,8 +6,11 @@
   "author": "Subeen Pang",
   "license": "MIT",
   "scripts": {
+    "predev": "node -e \"require('electron')\"",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "package": "electron-builder --publish never",
+    "verify": "npm run typecheck",
     "preview": "electron-vite preview",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
@@ -35,9 +38,51 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
-    "electron": "^34.0.0",
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^3.0.0",
     "typescript": "^5.7.0",
     "vite": "^6.1.0"
+  },
+  "build": {
+    "appId": "dev.ferrite.database-studio",
+    "productName": "Ferrite",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "node_modules/@electron-toolkit/utils/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "mac": {
+      "identity": null,
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "linux": {
+      "category": "Development",
+      "target": [
+        "AppImage"
+      ]
+    }
   }
 }

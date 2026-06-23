@@ -8,7 +8,7 @@ interface Props {
   onCancel: () => void
 }
 
-export function BindVariablesDialog({ paramNames, initialValues, onExecute, onCancel }: Props): JSX.Element {
+export function BindVariablesDialog({ paramNames, initialValues, onExecute, onCancel }: Props) {
   const [values, setValues] = useState<Record<string, string>>(() => {
     const v: Record<string, string> = {}
     for (const name of paramNames) {

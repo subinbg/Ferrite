@@ -1,14 +1,14 @@
 pub mod tools;
 pub mod validate;
 
-use tools::McpState;
 use rmcp::{
     ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{ServerCapabilities, ServerInfo},
-    schemars, tool_router, tool, tool_handler,
+    schemars, tool, tool_handler, tool_router,
 };
 use std::sync::Arc;
+use tools::McpState;
 
 // ---- Request types ----
 
@@ -67,7 +67,9 @@ impl FerriteMcpServer {
 
 #[tool_router]
 impl FerriteMcpServer {
-    #[tool(description = "List all database connections configured in Ferrite and whether they are currently connected. Use the 'id' field to reference a specific database in other tools.")]
+    #[tool(
+        description = "List all database connections configured in Ferrite and whether they are currently connected. Use the 'id' field to reference a specific database in other tools."
+    )]
     async fn list_connections(&self) -> String {
         match tools::list_connections(&self.state).await {
             Ok(text) => text,
@@ -75,7 +77,9 @@ impl FerriteMcpServer {
         }
     }
 
-    #[tool(description = "List all tables and views in a database schema. The database must be connected first via the Ferrite UI.")]
+    #[tool(
+        description = "List all tables and views in a database schema. The database must be connected first via the Ferrite UI."
+    )]
     async fn list_tables(&self, Parameters(req): Parameters<ListTablesRequest>) -> String {
         let schema = req.schema.unwrap_or_else(|| "public".to_string());
         match tools::list_tables(&self.state, &req.connection_id, &schema).await {
@@ -84,7 +88,9 @@ impl FerriteMcpServer {
         }
     }
 
-    #[tool(description = "List all columns in a table with data types, nullability, defaults, and primary key info.")]
+    #[tool(
+        description = "List all columns in a table with data types, nullability, defaults, and primary key info."
+    )]
     async fn list_columns(&self, Parameters(req): Parameters<ListColumnsRequest>) -> String {
         let schema = req.schema.unwrap_or_else(|| "public".to_string());
         match tools::list_columns(&self.state, &req.connection_id, &req.table, &schema).await {
@@ -93,10 +99,16 @@ impl FerriteMcpServer {
         }
     }
 
-    #[tool(description = "Execute a read-only SQL query (SELECT, WITH, EXPLAIN only). Write operations are blocked. Returns columns and rows as JSON.")]
-    async fn execute_readonly_query(&self, Parameters(req): Parameters<ExecuteQueryRequest>) -> String {
+    #[tool(
+        description = "Execute a read-only SQL query (SELECT, WITH, EXPLAIN only). Write operations are blocked. Returns columns and rows as JSON."
+    )]
+    async fn execute_readonly_query(
+        &self,
+        Parameters(req): Parameters<ExecuteQueryRequest>,
+    ) -> String {
         let limit = req.limit.unwrap_or(100).min(1000);
-        match tools::execute_readonly_query(&self.state, &req.connection_id, &req.sql, limit).await {
+        match tools::execute_readonly_query(&self.state, &req.connection_id, &req.sql, limit).await
+        {
             Ok(text) => text,
             Err(e) => format!("Error: {e}"),
         }
@@ -114,12 +126,11 @@ impl FerriteMcpServer {
 #[tool_handler]
 impl ServerHandler for FerriteMcpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions(
-                "Ferrite Database Studio MCP server. Provides read-only access to databases \
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "Ferrite Database Studio MCP server. Provides read-only access to databases \
                  connected in the Ferrite UI. The vault must be unlocked and databases must be \
-                 connected via the UI before tools will work. Use list_connections first."
-            )
+                 connected via the UI before tools will work. Use list_connections first.",
+        )
     }
 }
 
@@ -132,7 +143,8 @@ async fn vault_guard(
     use axum::response::IntoResponse;
 
     // Allow GET requests (SSE stream pickup) — they're already authenticated by session
-    if request.method() == axum::http::Method::GET || request.method() == axum::http::Method::DELETE {
+    if request.method() == axum::http::Method::GET || request.method() == axum::http::Method::DELETE
+    {
         return next.run(request).await;
     }
 
@@ -141,7 +153,8 @@ async fn vault_guard(
         return (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "Ferrite vault is locked. Open the Ferrite app and enter your master password first.",
-        ).into_response();
+        )
+            .into_response();
     }
 
     // Check at least one database connection is active
@@ -153,7 +166,8 @@ async fn vault_guard(
         return (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "No database connections are active. Connect a database in the Ferrite UI first.",
-        ).into_response();
+        )
+            .into_response();
     }
 
     next.run(request).await
@@ -162,8 +176,7 @@ async fn vault_guard(
 /// Create an axum-compatible MCP HTTP SSE service with vault/connection middleware.
 pub fn create_mcp_router(state: McpState) -> axum::Router {
     use rmcp::transport::streamable_http_server::{
-        StreamableHttpService, StreamableHttpServerConfig,
-        session::local::LocalSessionManager,
+        StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
     };
     use std::time::Duration;
 
@@ -183,6 +196,9 @@ pub fn create_mcp_router(state: McpState) -> axum::Router {
 
     axum::Router::new()
         .nest_service("/mcp", service)
-        .layer(axum::middleware::from_fn_with_state(state.clone(), vault_guard))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            vault_guard,
+        ))
         .with_state(state)
 }
