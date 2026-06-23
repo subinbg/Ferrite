@@ -1,3 +1,4 @@
+use crate::sql::ClauseBuilder;
 use crate::store::{AppStore, StoreError};
 use uuid::Uuid;
 
@@ -43,24 +44,16 @@ impl AppStore {
             ],
         )?;
 
+        self.get_history(&id)
+    }
+
+    fn get_history(&self, id: &str) -> Result<HistoryRecord, StoreError> {
         self.conn()
             .query_row(
                 "SELECT id, connection_id, sql_text, dialect, status, error_message, row_count, duration_ms, executed_at
                  FROM query_history WHERE id = ?1",
-                [&id],
-                |row| {
-                    Ok(HistoryRecord {
-                        id: row.get(0)?,
-                        connection_id: row.get(1)?,
-                        sql_text: row.get(2)?,
-                        dialect: row.get(3)?,
-                        status: row.get(4)?,
-                        error_message: row.get(5)?,
-                        row_count: row.get(6)?,
-                        duration_ms: row.get(7)?,
-                        executed_at: row.get(8)?,
-                    })
-                },
+                [id],
+                map_history,
             )
             .map_err(StoreError::Db)
     }
@@ -85,56 +78,29 @@ impl AppStore {
             )?;
             let rows = stmt.query_map(
                 rusqlite::params![query, limit as i64, offset as i64],
-                |row| {
-                    Ok(HistoryRecord {
-                        id: row.get(0)?,
-                        connection_id: row.get(1)?,
-                        sql_text: row.get(2)?,
-                        dialect: row.get(3)?,
-                        status: row.get(4)?,
-                        error_message: row.get(5)?,
-                        row_count: row.get(6)?,
-                        duration_ms: row.get(7)?,
-                        executed_at: row.get(8)?,
-                    })
-                },
+                map_history,
             )?;
             return rows.collect::<Result<Vec<_>, _>>().map_err(StoreError::Db);
         }
 
-        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(cid) =
-            connection_id
-        {
-            (
-                "SELECT id, connection_id, sql_text, dialect, status, error_message, row_count, duration_ms, executed_at
-                 FROM query_history WHERE connection_id = ?1
-                 ORDER BY executed_at DESC LIMIT ?2 OFFSET ?3".to_string(),
-                vec![Box::new(cid.to_string()) as Box<dyn rusqlite::types::ToSql>, Box::new(limit as i64), Box::new(offset as i64)],
-            )
+        let mut b = ClauseBuilder::new();
+        b.push_opt("connection_id", connection_id.map(str::to_owned));
+        let where_clause = if b.is_empty() {
+            String::new()
         } else {
-            (
-                "SELECT id, connection_id, sql_text, dialect, status, error_message, row_count, duration_ms, executed_at
-                 FROM query_history ORDER BY executed_at DESC LIMIT ?1 OFFSET ?2".to_string(),
-                vec![Box::new(limit as i64) as Box<dyn rusqlite::types::ToSql>, Box::new(offset as i64)],
-            )
+            format!("WHERE {}", b.join(" AND "))
         };
+        let limit_idx = b.bind(limit as i64);
+        let offset_idx = b.bind(offset as i64);
+
+        let sql = format!(
+            "SELECT id, connection_id, sql_text, dialect, status, error_message, row_count, duration_ms, executed_at
+             FROM query_history {where_clause}
+             ORDER BY executed_at DESC LIMIT ?{limit_idx} OFFSET ?{offset_idx}"
+        );
 
         let mut stmt = self.conn().prepare(&sql)?;
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|p| p.as_ref()).collect();
-        let rows = stmt.query_map(param_refs.as_slice(), |row| {
-            Ok(HistoryRecord {
-                id: row.get(0)?,
-                connection_id: row.get(1)?,
-                sql_text: row.get(2)?,
-                dialect: row.get(3)?,
-                status: row.get(4)?,
-                error_message: row.get(5)?,
-                row_count: row.get(6)?,
-                duration_ms: row.get(7)?,
-                executed_at: row.get(8)?,
-            })
-        })?;
+        let rows = stmt.query_map(b.refs().as_slice(), map_history)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(StoreError::Db)
     }
 
@@ -144,4 +110,18 @@ impl AppStore {
             .execute("DELETE FROM query_history WHERE id = ?1", [id])?;
         Ok(affected > 0)
     }
+}
+
+fn map_history(row: &rusqlite::Row) -> rusqlite::Result<HistoryRecord> {
+    Ok(HistoryRecord {
+        id: row.get(0)?,
+        connection_id: row.get(1)?,
+        sql_text: row.get(2)?,
+        dialect: row.get(3)?,
+        status: row.get(4)?,
+        error_message: row.get(5)?,
+        row_count: row.get(6)?,
+        duration_ms: row.get(7)?,
+        executed_at: row.get(8)?,
+    })
 }

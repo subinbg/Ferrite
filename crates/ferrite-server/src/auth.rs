@@ -37,8 +37,7 @@ pub async fn auth_middleware(
 
     match auth_header {
         Some(header) if header.starts_with("Bearer ") => {
-            let token = &header[7..];
-            if token == state.token.as_str() {
+            if constant_time_eq(&header.as_bytes()[7..], state.token.as_bytes()) {
                 Ok(next.run(request).await)
             } else {
                 Err(StatusCode::UNAUTHORIZED)
@@ -46,4 +45,10 @@ pub async fn auth_middleware(
         }
         _ => Err(StatusCode::UNAUTHORIZED),
     }
+}
+
+/// Compare two byte slices without leaking length/content via timing.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    use subtle::ConstantTimeEq;
+    a.len() == b.len() && a.ct_eq(b).into()
 }

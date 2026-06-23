@@ -30,10 +30,10 @@ struct McpServerHandle {
 pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
     let token = generate_token();
     let db_path = config.db_file;
-    if let Some(parent) = db_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = db_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
     }
     tracing::info!("Database file: {}", db_path.display());
     let store = AppStore::open(&db_path)?;
@@ -107,7 +107,7 @@ fn generate_token() -> String {
 }
 
 async fn start_mcp_server(state: state::AppState, port: u16) -> Option<McpServerHandle> {
-    let mcp_state = ferrite_mcp::tools::McpState {
+    let mcp_state = ferrite_mcp::state::McpState {
         vault: state.vault.clone(),
         pool_manager: state.pool_manager.clone(),
         store: state.store.clone(),

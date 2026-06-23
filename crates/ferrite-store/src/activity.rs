@@ -1,3 +1,4 @@
+use crate::sql::ClauseBuilder;
 use crate::store::{AppStore, StoreError};
 use uuid::Uuid;
 
@@ -73,42 +74,28 @@ impl AppStore {
             return rows.collect::<Result<Vec<_>, _>>().map_err(StoreError::Db);
         }
 
-        let mut conditions = Vec::new();
-        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-        let mut idx = 1;
+        let mut b = ClauseBuilder::new();
+        b.push_opt("activity_type", type_filter.map(str::to_owned));
+        b.push_opt("source", source_filter.map(str::to_owned));
 
-        if let Some(t) = type_filter {
-            conditions.push(format!("activity_type = ?{idx}"));
-            params.push(Box::new(t.to_string()));
-            idx += 1;
-        }
-        if let Some(s) = source_filter {
-            conditions.push(format!("source = ?{idx}"));
-            params.push(Box::new(s.to_string()));
-            idx += 1;
-        }
-
-        let where_clause = if conditions.is_empty() {
+        let where_clause = if b.is_empty() {
             String::new()
         } else {
-            format!("WHERE {}", conditions.join(" AND "))
+            format!("WHERE {}", b.join(" AND "))
         };
+        let limit_idx = b.bind(limit as i64);
+        let offset_idx = b.bind(offset as i64);
 
         let sql = format!(
             "SELECT id, activity_type, source, connection_id, tool_name,
                     request_text, request_params, status, error_message,
                     result_summary, row_count, duration_ms, executed_at
              FROM activity_log {where_clause}
-             ORDER BY executed_at DESC LIMIT ?{idx} OFFSET ?{}",
-            idx + 1
+             ORDER BY executed_at DESC LIMIT ?{limit_idx} OFFSET ?{offset_idx}"
         );
-        params.push(Box::new(limit as i64));
-        params.push(Box::new(offset as i64));
 
         let mut stmt = self.conn().prepare(&sql)?;
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|p| p.as_ref()).collect();
-        let rows = stmt.query_map(param_refs.as_slice(), map_activity)?;
+        let rows = stmt.query_map(b.refs().as_slice(), map_activity)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(StoreError::Db)
     }
 

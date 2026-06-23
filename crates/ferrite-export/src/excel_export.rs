@@ -42,14 +42,14 @@ pub fn export_excel(
                     if let Some(f) = n.as_f64() {
                         sheet.write_number(xlsx_row, col, f)?;
                     } else {
-                        sheet.write_string(xlsx_row, col, &n.to_string())?;
+                        sheet.write_string(xlsx_row, col, n.to_string())?;
                     }
                 }
                 serde_json::Value::String(s) => {
                     sheet.write_string(xlsx_row, col, s)?;
                 }
                 other => {
-                    sheet.write_string(xlsx_row, col, &other.to_string())?;
+                    sheet.write_string(xlsx_row, col, other.to_string())?;
                 }
             }
         }
@@ -57,7 +57,7 @@ pub fn export_excel(
 
     // Auto-fit columns based on header length (rough estimate)
     for (col, meta) in result.columns.iter().enumerate() {
-        let width = (meta.name.len() as f64 * 1.2).max(8.0).min(50.0);
+        let width = (meta.name.len() as f64 * 1.2).clamp(8.0, 50.0);
         sheet.set_column_width(col as u16, width)?;
     }
 

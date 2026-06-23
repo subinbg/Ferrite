@@ -1,3 +1,4 @@
+use crate::sql::ClauseBuilder;
 use crate::store::{AppStore, StoreError};
 use uuid::Uuid;
 
@@ -33,6 +34,21 @@ pub struct NewConnection {
     pub color: Option<String>,
 }
 
+/// Borrowed set of fields to update; `None` fields are left unchanged.
+#[derive(Debug, Default)]
+pub struct ConnectionPatch<'a> {
+    pub name: Option<&'a str>,
+    pub host: Option<&'a str>,
+    pub port: Option<i64>,
+    pub database_name: Option<&'a str>,
+    pub username: Option<&'a str>,
+    pub password_enc: Option<&'a [u8]>,
+    pub password_nonce: Option<&'a [u8]>,
+    pub ssl_mode: Option<&'a str>,
+    pub color: Option<&'a str>,
+    pub sort_order: Option<i64>,
+}
+
 impl AppStore {
     pub fn list_connections(&self) -> Result<Vec<ConnectionRecord>, StoreError> {
         let mut stmt = self.conn().prepare(
@@ -42,24 +58,7 @@ impl AppStore {
              FROM connections ORDER BY sort_order, name",
         )?;
 
-        let rows = stmt.query_map([], |row| {
-            Ok(ConnectionRecord {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                dialect: row.get(2)?,
-                host: row.get(3)?,
-                port: row.get(4)?,
-                database_name: row.get(5)?,
-                username: row.get(6)?,
-                password_enc: row.get(7)?,
-                password_nonce: row.get(8)?,
-                ssl_mode: row.get(9)?,
-                color: row.get(10)?,
-                sort_order: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-            })
-        })?;
+        let rows = stmt.query_map([], map_connection)?;
 
         rows.collect::<Result<Vec<_>, _>>().map_err(StoreError::Db)
     }
@@ -72,24 +71,7 @@ impl AppStore {
                         created_at, updated_at
                  FROM connections WHERE id = ?1",
                 [id],
-                |row| {
-                    Ok(ConnectionRecord {
-                        id: row.get(0)?,
-                        name: row.get(1)?,
-                        dialect: row.get(2)?,
-                        host: row.get(3)?,
-                        port: row.get(4)?,
-                        database_name: row.get(5)?,
-                        username: row.get(6)?,
-                        password_enc: row.get(7)?,
-                        password_nonce: row.get(8)?,
-                        ssl_mode: row.get(9)?,
-                        color: row.get(10)?,
-                        sort_order: row.get(11)?,
-                        created_at: row.get(12)?,
-                        updated_at: row.get(13)?,
-                    })
-                },
+                map_connection,
             )
             .map_err(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => {
@@ -125,83 +107,30 @@ impl AppStore {
     pub fn update_connection(
         &self,
         id: &str,
-        name: Option<&str>,
-        host: Option<&str>,
-        port: Option<i64>,
-        database_name: Option<&str>,
-        username: Option<&str>,
-        password_enc: Option<&[u8]>,
-        password_nonce: Option<&[u8]>,
-        ssl_mode: Option<&str>,
-        color: Option<&str>,
-        sort_order: Option<i64>,
+        patch: &ConnectionPatch,
     ) -> Result<ConnectionRecord, StoreError> {
-        // Build dynamic SET clause
-        let mut sets = Vec::new();
-        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-        let mut idx = 1;
+        let mut b = ClauseBuilder::new();
+        b.push_opt("name", patch.name.map(str::to_owned));
+        b.push_opt("host", patch.host.map(str::to_owned));
+        b.push_opt("ssl_mode", patch.ssl_mode.map(str::to_owned));
+        b.push_opt("color", patch.color.map(str::to_owned));
+        b.push_opt("port", patch.port);
+        b.push_opt("database_name", patch.database_name.map(str::to_owned));
+        b.push_opt("username", patch.username.map(str::to_owned));
+        b.push_opt("password_enc", patch.password_enc.map(<[u8]>::to_vec));
+        b.push_opt("password_nonce", patch.password_nonce.map(<[u8]>::to_vec));
+        b.push_opt("sort_order", patch.sort_order);
 
-        macro_rules! maybe_set {
-            ($field:expr, $col:literal, $val:expr) => {
-                if let Some(v) = $val {
-                    sets.push(format!("{} = ?{}", $col, idx));
-                    params.push(Box::new(v.to_owned()));
-                    idx += 1;
-                }
-            };
-        }
-
-        maybe_set!(name, "name", name);
-        maybe_set!(host, "host", host);
-        maybe_set!(ssl_mode, "ssl_mode", ssl_mode);
-        maybe_set!(color, "color", color);
-
-        if let Some(v) = port {
-            sets.push(format!("port = ?{}", idx));
-            params.push(Box::new(v));
-            idx += 1;
-        }
-        if let Some(v) = database_name {
-            sets.push(format!("database_name = ?{}", idx));
-            params.push(Box::new(v.to_owned()));
-            idx += 1;
-        }
-        if let Some(v) = username {
-            sets.push(format!("username = ?{}", idx));
-            params.push(Box::new(v.to_owned()));
-            idx += 1;
-        }
-        if let Some(v) = password_enc {
-            sets.push(format!("password_enc = ?{}", idx));
-            params.push(Box::new(v.to_owned()));
-            idx += 1;
-        }
-        if let Some(v) = password_nonce {
-            sets.push(format!("password_nonce = ?{}", idx));
-            params.push(Box::new(v.to_owned()));
-            idx += 1;
-        }
-        if let Some(v) = sort_order {
-            sets.push(format!("sort_order = ?{}", idx));
-            params.push(Box::new(v));
-            idx += 1;
-        }
-
-        if sets.is_empty() {
+        if b.is_empty() {
             return self.get_connection(id);
         }
 
-        sets.push(format!("updated_at = datetime('now')"));
+        let id_idx = b.bind(id.to_owned());
         let sql = format!(
-            "UPDATE connections SET {} WHERE id = ?{}",
-            sets.join(", "),
-            idx
+            "UPDATE connections SET {}, updated_at = datetime('now') WHERE id = ?{id_idx}",
+            b.join(", ")
         );
-        params.push(Box::new(id.to_owned()));
-
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|p| p.as_ref()).collect();
-        self.conn().execute(&sql, param_refs.as_slice())?;
+        self.conn().execute(&sql, b.refs().as_slice())?;
 
         self.get_connection(id)
     }
@@ -212,6 +141,25 @@ impl AppStore {
             .execute("DELETE FROM connections WHERE id = ?1", [id])?;
         Ok(affected > 0)
     }
+}
+
+fn map_connection(row: &rusqlite::Row) -> rusqlite::Result<ConnectionRecord> {
+    Ok(ConnectionRecord {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        dialect: row.get(2)?,
+        host: row.get(3)?,
+        port: row.get(4)?,
+        database_name: row.get(5)?,
+        username: row.get(6)?,
+        password_enc: row.get(7)?,
+        password_nonce: row.get(8)?,
+        ssl_mode: row.get(9)?,
+        color: row.get(10)?,
+        sort_order: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
+    })
 }
 
 #[cfg(test)]
@@ -253,16 +201,10 @@ mod tests {
         let updated = store
             .update_connection(
                 &record.id,
-                Some("Renamed"),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
+                &ConnectionPatch {
+                    name: Some("Renamed"),
+                    ..Default::default()
+                },
             )
             .unwrap();
         assert_eq!(updated.name, "Renamed");

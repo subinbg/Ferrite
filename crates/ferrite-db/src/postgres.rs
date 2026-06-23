@@ -1,8 +1,9 @@
+use crate::sql::{LiteralStyle, collect_rows, process_bind_variables};
 use ferrite_core::FerriteError;
-use ferrite_core::types::connection::ConnectParams;
-use ferrite_core::types::query::{ColumnMeta, ExplainResult, ExplainSummary, QueryResult};
+use ferrite_core::traits::Driver;
+use ferrite_core::types::connection::{ConnectParams, DatabaseDialect};
+use ferrite_core::types::query::{ExplainResult, ExplainSummary, QueryResult};
 use ferrite_core::types::schema::{ColumnInfo, TableInfo};
-use futures::TryStreamExt;
 use sqlx::ConnectOptions;
 use sqlx::postgres::{PgConnectOptions, PgPool, PgSslMode};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
@@ -78,8 +79,14 @@ impl PostgresDriver {
         pool.close().await;
         Ok(start.elapsed())
     }
+}
 
-    pub async fn get_schemas(&self) -> Result<Vec<String>, FerriteError> {
+impl Driver for PostgresDriver {
+    fn dialect(&self) -> DatabaseDialect {
+        DatabaseDialect::PostgreSQL
+    }
+
+    async fn get_schemas(&self) -> Result<Vec<String>, FerriteError> {
         let rows = sqlx::query(
             "SELECT schema_name FROM information_schema.schemata
              WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
@@ -92,7 +99,7 @@ impl PostgresDriver {
         Ok(rows.iter().map(|r| r.get::<String, _>(0)).collect())
     }
 
-    pub async fn get_tables(&self, schema: &str) -> Result<Vec<TableInfo>, FerriteError> {
+    async fn get_tables(&self, schema: &str) -> Result<Vec<TableInfo>, FerriteError> {
         let rows = sqlx::query(
             "SELECT t.table_schema, t.table_name, t.table_type,
                     (SELECT reltuples::bigint FROM pg_class c
@@ -119,7 +126,7 @@ impl PostgresDriver {
             .collect())
     }
 
-    pub async fn get_columns(
+    async fn get_columns(
         &self,
         schema: &str,
         table: &str,
@@ -163,7 +170,7 @@ impl PostgresDriver {
             .collect())
     }
 
-    pub async fn execute(
+    async fn execute(
         &self,
         sql: &str,
         bind_variables: &HashMap<String, serde_json::Value>,
@@ -177,57 +184,20 @@ impl PostgresDriver {
         // SECURITY NOTE: Bind variables use literal text substitution, not parameterized queries.
         // This is by design for a database studio — the user controls both SQL and values.
         // Single quotes are escaped via '' (SQL standard). This matches DataGrip/DBeaver behavior.
-        let processed_sql = process_bind_variables(sql, bind_variables)?;
+        let processed_sql = process_bind_variables(sql, bind_variables, LiteralStyle::Postgres)?;
 
         let timeout = std::time::Duration::from_secs(if timeout_seconds > 0 {
             timeout_seconds
         } else {
             30
         });
-        let max_seen = offset.saturating_add(limit).saturating_add(1);
-        let fetch = async {
-            let mut stream = sqlx::query(&processed_sql).fetch(&self.pool);
-            let mut columns: Option<Vec<ColumnMeta>> = None;
-            let mut data_rows = Vec::new();
-            let mut seen = 0usize;
-            let mut truncated = false;
-
-            while let Some(row) = stream
-                .try_next()
-                .await
-                .map_err(|e| FerriteError::Database(e.to_string()))?
-            {
-                if columns.is_none() {
-                    columns = Some(
-                        row.columns()
-                            .iter()
-                            .map(|c| ColumnMeta {
-                                name: c.name().to_string(),
-                                data_type: c.type_info().name().to_string(),
-                                nullable: true,
-                            })
-                            .collect(),
-                    );
-                }
-
-                if seen >= offset && data_rows.len() < limit {
-                    data_rows.push(row_to_json_values(&row));
-                }
-
-                seen += 1;
-                if seen >= max_seen {
-                    truncated = true;
-                    break;
-                }
-            }
-
-            Ok::<_, FerriteError>((columns.unwrap_or_default(), data_rows, seen, truncated))
-        };
-
-        let (columns, data_rows, seen, truncated) =
-            tokio::time::timeout(timeout, fetch)
-                .await
-                .map_err(|_| FerriteError::QueryTimeout(timeout.as_secs()))??;
+        let stream = sqlx::query(&processed_sql).fetch(&self.pool);
+        let (columns, data_rows, seen, truncated) = tokio::time::timeout(
+            timeout,
+            collect_rows::<sqlx::Postgres, _, _>(stream, limit, offset, row_to_json_values),
+        )
+        .await
+        .map_err(|_| FerriteError::QueryTimeout(timeout.as_secs()))??;
 
         let duration_ms = start.elapsed().as_millis() as u64;
         let row_count = data_rows.len();
@@ -244,12 +214,12 @@ impl PostgresDriver {
         })
     }
 
-    pub async fn explain(
+    async fn explain(
         &self,
         sql: &str,
         bind_variables: &HashMap<String, serde_json::Value>,
     ) -> Result<ExplainResult, FerriteError> {
-        let processed_sql = process_bind_variables(sql, bind_variables)?;
+        let processed_sql = process_bind_variables(sql, bind_variables, LiteralStyle::Postgres)?;
         let explain_sql = format!("EXPLAIN (ANALYZE, FORMAT JSON) {processed_sql}");
 
         let rows = sqlx::query(&explain_sql)
@@ -267,65 +237,6 @@ impl PostgresDriver {
             raw_plan: raw_plan.clone(),
             summary: parse_pg_explain(&raw_plan),
         })
-    }
-}
-
-/// Replace `:name` bind variables with literal SQL values.
-/// This does direct text substitution (like DataGrip) rather than parameterized queries,
-/// so PostgreSQL handles type coercion naturally (e.g., a UUID string in a UUID column context).
-fn process_bind_variables(
-    sql: &str,
-    binds: &HashMap<String, serde_json::Value>,
-) -> Result<String, FerriteError> {
-    if binds.is_empty() {
-        return Ok(sql.to_string());
-    }
-
-    let mut result = sql.to_string();
-
-    // Find all :name patterns, skip :: (PostgreSQL type cast)
-    let re = regex_lite::Regex::new(r":([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
-    let mut replacements = Vec::new();
-
-    for cap in re.captures_iter(sql) {
-        let full_match = cap.get(0).unwrap();
-        // Skip :: casts (check character before the match)
-        if full_match.start() > 0 && sql.as_bytes()[full_match.start() - 1] == b':' {
-            continue;
-        }
-        let name = &cap[1];
-        if let Some(value) = binds.get(name) {
-            replacements.push((full_match.range(), json_to_sql_literal(value)));
-        }
-    }
-
-    // Apply in reverse to preserve positions
-    for (range, replacement) in replacements.into_iter().rev() {
-        result.replace_range(range, &replacement);
-    }
-
-    Ok(result)
-}
-
-/// Convert a JSON value to a safe SQL literal string.
-fn json_to_sql_literal(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::Null => "NULL".to_string(),
-        serde_json::Value::Bool(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
-        serde_json::Value::Number(n) => n.to_string(),
-        serde_json::Value::String(s) => {
-            // Escape single quotes by doubling them (standard SQL escaping)
-            let escaped = s.replace('\'', "''");
-            format!("'{escaped}'")
-        }
-        serde_json::Value::Array(arr) => {
-            let items: Vec<String> = arr.iter().map(json_to_sql_literal).collect();
-            format!("ARRAY[{}]", items.join(", "))
-        }
-        serde_json::Value::Object(_) => {
-            let escaped = value.to_string().replace('\'', "''");
-            format!("'{escaped}'::jsonb")
-        }
     }
 }
 
@@ -348,10 +259,10 @@ fn pg_column_to_json(
     use sqlx::types::chrono;
 
     // Check if the column is SQL NULL first via raw value
-    if let Ok(raw) = row.try_get_raw(idx) {
-        if raw.is_null() {
-            return serde_json::Value::Null;
-        }
+    if let Ok(raw) = row.try_get_raw(idx)
+        && raw.is_null()
+    {
+        return serde_json::Value::Null;
     }
 
     match type_name {
@@ -386,7 +297,7 @@ fn pg_column_to_json(
         "FLOAT8" | "NUMERIC" => row
             .try_get::<f64, _>(idx)
             .ok()
-            .and_then(|v| serde_json::Number::from_f64(v))
+            .and_then(serde_json::Number::from_f64)
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
 

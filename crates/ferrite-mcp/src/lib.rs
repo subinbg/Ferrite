@@ -1,3 +1,4 @@
+pub mod state;
 pub mod tools;
 pub mod validate;
 
@@ -7,8 +8,8 @@ use rmcp::{
     model::{ServerCapabilities, ServerInfo},
     schemars, tool, tool_handler, tool_router,
 };
+use state::McpState;
 use std::sync::Arc;
-use tools::McpState;
 
 // ---- Request types ----
 

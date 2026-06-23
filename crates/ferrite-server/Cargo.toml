@@ -32,6 +32,7 @@ clap.workspace = true
 rust-embed.workspace = true
 rand.workspace = true
 base64.workspace = true
+subtle = { workspace = true }
 tokio-stream.workspace = true
 futures.workspace = true
 mime_guess = "2"

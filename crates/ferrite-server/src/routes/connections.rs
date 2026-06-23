@@ -7,7 +7,7 @@ use axum::{
 use ferrite_core::types::connection::{
     ConnectionCreate, ConnectionTestResult, ConnectionUpdate, DatabaseDialect,
 };
-use ferrite_store::connections::NewConnection;
+use ferrite_store::connections::{ConnectionPatch, NewConnection};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -147,23 +147,23 @@ pub async fn update_connection(
         (None, None)
     };
 
+    let ssl_mode = req.ssl_mode.as_ref().map(|s| format!("{s:?}").to_lowercase());
     let store = state.store.lock().await;
     let record = store
         .update_connection(
             &id_string,
-            req.name.as_deref(),
-            req.host.as_deref(),
-            req.port.map(|p| p as i64),
-            req.database_name.as_deref(),
-            req.username.as_deref(),
-            password_enc.as_deref(),
-            password_nonce.as_deref(),
-            req.ssl_mode
-                .as_ref()
-                .map(|s| format!("{s:?}").to_lowercase())
-                .as_deref(),
-            req.color.as_deref(),
-            req.sort_order.map(|s| s as i64),
+            &ConnectionPatch {
+                name: req.name.as_deref(),
+                host: req.host.as_deref(),
+                port: req.port.map(|p| p as i64),
+                database_name: req.database_name.as_deref(),
+                username: req.username.as_deref(),
+                password_enc: password_enc.as_deref(),
+                password_nonce: password_nonce.as_deref(),
+                ssl_mode: ssl_mode.as_deref(),
+                color: req.color.as_deref(),
+                sort_order: req.sort_order.map(|s| s as i64),
+            },
         )
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 

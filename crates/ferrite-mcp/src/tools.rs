@@ -1,36 +1,10 @@
+use crate::state::McpState;
 use crate::validate::validate_readonly_sql;
-use anyhow::{Result, bail};
-use ferrite_crypto::vault::MasterVault;
-use ferrite_db::pool::PoolManager;
+use anyhow::Result;
 use ferrite_store::activity::NewActivity;
-use ferrite_store::store::AppStore;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
-
-/// Shared state passed to MCP tool handlers.
-/// Vault and "at least one connection" checks are enforced by the middleware layer.
-/// Tool handlers only need to check the specific connection_id they operate on.
-#[derive(Clone, Debug)]
-pub struct McpState {
-    pub vault: Arc<RwLock<Option<MasterVault>>>,
-    pub pool_manager: Arc<RwLock<PoolManager>>,
-    pub store: Arc<Mutex<AppStore>>,
-}
-
-impl McpState {
-    /// Check that a specific connection is active.
-    pub async fn require_connection(&self, connection_id: &str) -> Result<Uuid> {
-        let uuid = Uuid::parse_str(connection_id)
-            .map_err(|_| anyhow::anyhow!("Invalid connection ID: {connection_id}"))?;
-        if !self.pool_manager.read().await.is_connected(&uuid) {
-            bail!("Database {connection_id} is not connected. Connect it in the Ferrite UI first.");
-        }
-        Ok(uuid)
-    }
-}
 
 /// Log an MCP tool call to the activity log.
 async fn log_activity(
@@ -180,13 +154,13 @@ pub async fn execute_readonly_query(
     let params =
         serde_json::json!({"connection_id": connection_id, "sql": sql, "limit": limit}).to_string();
     let result = async {
-        validate_readonly_sql(sql)
-            .map_err(|e| anyhow::anyhow!("Read-only validation failed: {e}"))?;
         let uuid = state.require_connection(connection_id).await?;
         let pool_mgr = state.pool_manager.read().await;
         let driver = pool_mgr
             .get(&uuid)
             .ok_or_else(|| anyhow::anyhow!("Connection lost"))?;
+        validate_readonly_sql(sql, driver.dialect())
+            .map_err(|e| anyhow::anyhow!("Read-only validation failed: {e}"))?;
         let qr = driver
             .execute(sql, &HashMap::new(), limit.min(1000), 0, 30)
             .await

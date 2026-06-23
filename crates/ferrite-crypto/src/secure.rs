@@ -38,12 +38,6 @@ impl<'de> Deserialize<'de> for SecureString {
     }
 }
 
-impl Drop for SecureString {
-    fn drop(&mut self) {
-        // Zeroizing handles this, but be explicit
-    }
-}
-
 /// A byte buffer that zeroizes on drop.
 pub struct SecureBytes(Zeroizing<Vec<u8>>);
 

@@ -1,4 +1,5 @@
 use ferrite_core::FerriteError;
+use ferrite_core::traits::Driver;
 use ferrite_core::types::connection::{ConnectParams, DatabaseDialect};
 use ferrite_core::types::query::{ExplainResult, QueryResult};
 use ferrite_core::types::schema::{ColumnInfo, TableInfo};

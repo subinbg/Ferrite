@@ -1,11 +1,12 @@
+use crate::sql::{LiteralStyle, collect_rows, process_bind_variables};
 use ferrite_core::FerriteError;
-use ferrite_core::types::connection::ConnectParams;
-use ferrite_core::types::query::{ColumnMeta, ExplainResult, ExplainSummary, QueryResult};
+use ferrite_core::traits::Driver;
+use ferrite_core::types::connection::{ConnectParams, DatabaseDialect};
+use ferrite_core::types::query::{ExplainResult, ExplainSummary, QueryResult};
 use ferrite_core::types::schema::{ColumnInfo, TableInfo};
-use futures::TryStreamExt;
 use sqlx::ConnectOptions;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
-use sqlx::{Column, Row, TypeInfo};
+use sqlx::Row;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Instant;
@@ -58,13 +59,19 @@ impl SqliteDriver {
         pool.close().await;
         Ok(start.elapsed())
     }
+}
 
-    pub async fn get_schemas(&self) -> Result<Vec<String>, FerriteError> {
+impl Driver for SqliteDriver {
+    fn dialect(&self) -> DatabaseDialect {
+        DatabaseDialect::SQLite
+    }
+
+    async fn get_schemas(&self) -> Result<Vec<String>, FerriteError> {
         // SQLite doesn't have schemas in the traditional sense
         Ok(vec!["main".to_string()])
     }
 
-    pub async fn get_tables(&self, _schema: &str) -> Result<Vec<TableInfo>, FerriteError> {
+    async fn get_tables(&self, _schema: &str) -> Result<Vec<TableInfo>, FerriteError> {
         let rows = sqlx::query(
             "SELECT name, type FROM sqlite_master
              WHERE type IN ('table', 'view')
@@ -87,7 +94,7 @@ impl SqliteDriver {
             .collect())
     }
 
-    pub async fn get_columns(
+    async fn get_columns(
         &self,
         _schema: &str,
         table: &str,
@@ -116,7 +123,7 @@ impl SqliteDriver {
             .collect())
     }
 
-    pub async fn execute(
+    async fn execute(
         &self,
         sql: &str,
         bind_variables: &HashMap<String, serde_json::Value>,
@@ -127,57 +134,20 @@ impl SqliteDriver {
         let execution_id = Uuid::new_v4();
         let start = Instant::now();
 
-        let processed_sql = process_bind_variables_sqlite(sql, bind_variables)?;
+        let processed_sql = process_bind_variables(sql, bind_variables, LiteralStyle::Sqlite)?;
 
         let timeout = std::time::Duration::from_secs(if timeout_seconds > 0 {
             timeout_seconds
         } else {
             30
         });
-        let max_seen = offset.saturating_add(limit).saturating_add(1);
-        let fetch = async {
-            let mut stream = sqlx::query(&processed_sql).fetch(&self.pool);
-            let mut columns: Option<Vec<ColumnMeta>> = None;
-            let mut data_rows = Vec::new();
-            let mut seen = 0usize;
-            let mut truncated = false;
-
-            while let Some(row) = stream
-                .try_next()
-                .await
-                .map_err(|e| FerriteError::Database(e.to_string()))?
-            {
-                if columns.is_none() {
-                    columns = Some(
-                        row.columns()
-                            .iter()
-                            .map(|c| ColumnMeta {
-                                name: c.name().to_string(),
-                                data_type: c.type_info().name().to_string(),
-                                nullable: true,
-                            })
-                            .collect(),
-                    );
-                }
-
-                if seen >= offset && data_rows.len() < limit {
-                    data_rows.push(sqlite_row_to_json(&row));
-                }
-
-                seen += 1;
-                if seen >= max_seen {
-                    truncated = true;
-                    break;
-                }
-            }
-
-            Ok::<_, FerriteError>((columns.unwrap_or_default(), data_rows, seen, truncated))
-        };
-
-        let (columns, data_rows, seen, truncated) =
-            tokio::time::timeout(timeout, fetch)
-                .await
-                .map_err(|_| FerriteError::QueryTimeout(timeout.as_secs()))??;
+        let stream = sqlx::query(&processed_sql).fetch(&self.pool);
+        let (columns, data_rows, seen, truncated) = tokio::time::timeout(
+            timeout,
+            collect_rows::<sqlx::Sqlite, _, _>(stream, limit, offset, sqlite_row_to_json),
+        )
+        .await
+        .map_err(|_| FerriteError::QueryTimeout(timeout.as_secs()))??;
 
         let duration_ms = start.elapsed().as_millis() as u64;
         let row_count = data_rows.len();
@@ -194,12 +164,12 @@ impl SqliteDriver {
         })
     }
 
-    pub async fn explain(
+    async fn explain(
         &self,
         sql: &str,
         bind_variables: &HashMap<String, serde_json::Value>,
     ) -> Result<ExplainResult, FerriteError> {
-        let processed_sql = process_bind_variables_sqlite(sql, bind_variables)?;
+        let processed_sql = process_bind_variables(sql, bind_variables, LiteralStyle::Sqlite)?;
         let explain_sql = format!("EXPLAIN QUERY PLAN {processed_sql}");
 
         let rows = sqlx::query(&explain_sql)
@@ -227,52 +197,6 @@ impl SqliteDriver {
                 nodes: vec![],
             },
         })
-    }
-}
-
-/// Replace :name bind variables with literal SQL values (same approach as PostgreSQL driver).
-fn process_bind_variables_sqlite(
-    sql: &str,
-    binds: &HashMap<String, serde_json::Value>,
-) -> Result<String, FerriteError> {
-    if binds.is_empty() {
-        return Ok(sql.to_string());
-    }
-
-    let mut result = sql.to_string();
-    let re = regex_lite::Regex::new(r":([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
-    let mut replacements = Vec::new();
-
-    for cap in re.captures_iter(sql) {
-        let name = &cap[1];
-        if let Some(value) = binds.get(name) {
-            replacements.push((
-                cap.get(0).unwrap().range(),
-                json_to_sql_literal_sqlite(value),
-            ));
-        }
-    }
-
-    for (range, replacement) in replacements.into_iter().rev() {
-        result.replace_range(range, &replacement);
-    }
-
-    Ok(result)
-}
-
-fn json_to_sql_literal_sqlite(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::Null => "NULL".to_string(),
-        serde_json::Value::Bool(b) => if *b { "1" } else { "0" }.to_string(),
-        serde_json::Value::Number(n) => n.to_string(),
-        serde_json::Value::String(s) => {
-            let escaped = s.replace('\'', "''");
-            format!("'{escaped}'")
-        }
-        other => {
-            let escaped = other.to_string().replace('\'', "''");
-            format!("'{escaped}'")
-        }
     }
 }
 

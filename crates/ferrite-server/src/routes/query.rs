@@ -26,66 +26,42 @@ pub async fn execute_query(
         )
         .await;
 
-    // Record in history
-    let store = state.store.lock().await;
-    match &result {
-        Ok(qr) => {
-            let _ = store.insert_history(&NewHistoryEntry {
-                connection_id: req.connection_id.to_string(),
-                sql_text: req.sql.clone(),
-                dialect: dialect.clone(),
-                status: "success".to_string(),
-                error_message: None,
-                row_count: Some(qr.row_count as i64),
-                duration_ms: Some(qr.duration_ms as i64),
-            });
-        }
-        Err(e) => {
-            let _ = store.insert_history(&NewHistoryEntry {
-                connection_id: req.connection_id.to_string(),
-                sql_text: req.sql.clone(),
-                dialect: dialect.clone(),
-                status: "error".to_string(),
-                error_message: Some(e.to_string()),
-                row_count: None,
-                duration_ms: None,
-            });
-        }
-    }
+    // Derive the log fields once, then record in both history and the unified activity log.
+    let (status, error_message, row_count, duration_ms, summary) = match &result {
+        Ok(qr) => (
+            "success",
+            None,
+            Some(qr.row_count as i64),
+            Some(qr.duration_ms as i64),
+            Some(format!("{} rows in {}ms", qr.row_count, qr.duration_ms)),
+        ),
+        Err(e) => ("error", Some(e.to_string()), None, None, None),
+    };
 
-    // Also record in unified activity log
-    match &result {
-        Ok(qr) => {
-            let _ = store.insert_activity(&NewActivity {
-                activity_type: "query".to_string(),
-                source: "ui".to_string(),
-                connection_id: Some(req.connection_id.to_string()),
-                tool_name: None,
-                request_text: req.sql.clone(),
-                request_params: None,
-                status: "success".to_string(),
-                error_message: None,
-                result_summary: Some(format!("{} rows in {}ms", qr.row_count, qr.duration_ms)),
-                row_count: Some(qr.row_count as i64),
-                duration_ms: Some(qr.duration_ms as i64),
-            });
-        }
-        Err(e) => {
-            let _ = store.insert_activity(&NewActivity {
-                activity_type: "query".to_string(),
-                source: "ui".to_string(),
-                connection_id: Some(req.connection_id.to_string()),
-                tool_name: None,
-                request_text: req.sql.clone(),
-                request_params: None,
-                status: "error".to_string(),
-                error_message: Some(e.to_string()),
-                result_summary: None,
-                row_count: None,
-                duration_ms: None,
-            });
-        }
-    }
+    let store = state.store.lock().await;
+    let _ = store.insert_history(&NewHistoryEntry {
+        connection_id: req.connection_id.to_string(),
+        sql_text: req.sql.clone(),
+        dialect,
+        status: status.to_string(),
+        error_message: error_message.clone(),
+        row_count,
+        duration_ms,
+    });
+    let _ = store.insert_activity(&NewActivity {
+        activity_type: "query".to_string(),
+        source: "ui".to_string(),
+        connection_id: Some(req.connection_id.to_string()),
+        tool_name: None,
+        request_text: req.sql.clone(),
+        request_params: None,
+        status: status.to_string(),
+        error_message,
+        result_summary: summary,
+        row_count,
+        duration_ms,
+    });
+    drop(store);
 
     let query_result = result.map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(Json(query_result))
