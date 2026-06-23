@@ -8,7 +8,7 @@ export interface DesktopSettings {
 }
 
 const DEFAULT_SETTINGS: DesktopSettings = {
-  mcpEnabled: false
+  mcpEnabled: true
 }
 
 function settingsPath(): string {
@@ -21,7 +21,9 @@ export async function loadSettings(): Promise<DesktopSettings> {
     const parsed = JSON.parse(raw) as Partial<DesktopSettings>
     return {
       dataDir: typeof parsed.dataDir === 'string' ? parsed.dataDir : undefined,
-      mcpEnabled: parsed.mcpEnabled === true
+      mcpEnabled: typeof parsed.mcpEnabled === 'boolean'
+        ? parsed.mcpEnabled
+        : DEFAULT_SETTINGS.mcpEnabled
     }
   } catch {
     return { ...DEFAULT_SETTINGS }

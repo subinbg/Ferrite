@@ -59,14 +59,8 @@ impl AppStore {
             );",
         )?;
 
-        let migrations: Vec<(&str, &str)> = vec![
-            ("001_init", include_str!("migrations/001_init.sql")),
-            ("002_fts", include_str!("migrations/002_fts.sql")),
-            (
-                "003_activity_log",
-                include_str!("migrations/003_activity_log.sql"),
-            ),
-        ];
+        let migrations: Vec<(&str, &str)> =
+            vec![("001_init", include_str!("migrations/001_init.sql"))];
 
         for (name, sql) in migrations {
             let applied: bool = self.conn.query_row(
@@ -113,7 +107,7 @@ mod tests {
             .conn()
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 3);
+        assert_eq!(count, 1);
     }
 
     #[test]
@@ -133,5 +127,6 @@ mod tests {
         assert!(tables.contains(&"query_history".to_string()));
         assert!(tables.contains(&"query_versions".to_string()));
         assert!(tables.contains(&"settings".to_string()));
+        assert!(tables.contains(&"activity_log".to_string()));
     }
 }

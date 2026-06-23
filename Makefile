@@ -7,6 +7,9 @@
 #   make package   # create a standalone desktop package with Electron Builder
 #   make clean     # remove generated desktop/package artifacts
 #
+# Configuration examples:
+#   make dev MCP_PORT=26260    # MCP URL: http://127.0.0.1:26260/mcp
+#
 # Output locations:
 #   app/out/          Electron/Vite production output
 #   app/build/bin/    release sidecar staged for Electron packaging
@@ -19,10 +22,11 @@
 APP_DIR := app
 DEV_DATA_DIR := .ferrite-data
 APP_BIN_DIR := $(APP_DIR)/build/bin
+MCP_PORT ?= 26260
 
 ifeq ($(OS),Windows_NT)
 EXE_EXT := .exe
-DEV_ENV := set FERRITE_DATA_DIR=$(abspath $(DEV_DATA_DIR))&&
+DEV_ENV := set "FERRITE_DATA_DIR=$(abspath $(DEV_DATA_DIR))"&& set "FERRITE_MCP_PORT=$(MCP_PORT)"&&
 define STAGE_SIDECAR
 	powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -LiteralPath '$(APP_BIN_DIR)' -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Path '$(APP_BIN_DIR)' -Force | Out-Null; Copy-Item -LiteralPath '$(RELEASE_SIDECAR)' -Destination '$(PACKAGED_SIDECAR)' -Force"
 endef
@@ -34,7 +38,7 @@ define CLEAN_GENERATED
 endef
 else
 EXE_EXT :=
-DEV_ENV := FERRITE_DATA_DIR="$(abspath $(DEV_DATA_DIR))"
+DEV_ENV := FERRITE_DATA_DIR="$(abspath $(DEV_DATA_DIR))" FERRITE_MCP_PORT="$(MCP_PORT)"
 define STAGE_SIDECAR
 	rm -rf "$(APP_BIN_DIR)"
 	mkdir -p "$(APP_BIN_DIR)"
@@ -61,6 +65,7 @@ help:
 	@echo "  make build    - build renderer and stage release sidecar in app/build/bin"
 	@echo "  make package  - write desktop package output to app/dist"
 	@echo "  make clean    - remove app/out, app/build/bin, app/dist, and .ferrite-data"
+	@echo "  MCP_PORT=$(MCP_PORT) -> http://127.0.0.1:$(MCP_PORT)/mcp during make dev"
 
 verify: verify-app verify-crates
 

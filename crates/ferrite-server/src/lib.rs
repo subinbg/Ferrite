@@ -8,7 +8,10 @@ use app::RouterConfig;
 use ferrite_store::store::AppStore;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::time::Duration;
 use tokio::net::TcpListener;
+use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
@@ -17,6 +20,11 @@ pub struct ServerConfig {
     pub dev: bool,
     pub data_dir: Option<PathBuf>,
     pub mcp_port: u16,
+}
+
+struct McpServerHandle {
+    shutdown: oneshot::Sender<()>,
+    task: JoinHandle<()>,
 }
 
 impl Default for ServerConfig {
@@ -59,9 +67,11 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
     println!("FERRITE_TOKEN={token}");
     println!("FERRITE_READY");
 
-    if config.mcp_port > 0 {
-        start_mcp_server(mcp_state_ref, config.mcp_port).await;
-    }
+    let mcp_server = if config.mcp_port > 0 {
+        start_mcp_server(mcp_state_ref, config.mcp_port).await
+    } else {
+        None
+    };
 
     if config.standalone {
         let url = format!("http://127.0.0.1:{}", actual_addr.port());
@@ -77,6 +87,16 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
     axum::serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+
+    if let Some(mcp_server) = mcp_server {
+        let _ = mcp_server.shutdown.send(());
+        if tokio::time::timeout(Duration::from_secs(2), mcp_server.task)
+            .await
+            .is_err()
+        {
+            tracing::warn!("Timed out while waiting for MCP server shutdown");
+        }
+    }
 
     tracing::info!("Shutting down: closing database connections");
     {
@@ -95,7 +115,7 @@ fn generate_token() -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
-async fn start_mcp_server(state: state::AppState, port: u16) {
+async fn start_mcp_server(state: state::AppState, port: u16) -> Option<McpServerHandle> {
     let mcp_state = ferrite_mcp::tools::McpState {
         vault: state.vault.clone(),
         pool_manager: state.pool_manager.clone(),
@@ -105,15 +125,28 @@ async fn start_mcp_server(state: state::AppState, port: u16) {
     match TcpListener::bind(mcp_addr).await {
         Ok(mcp_listener) => {
             let mcp_router = ferrite_mcp::create_mcp_router(mcp_state);
+            let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
             tracing::info!("MCP server listening on http://127.0.0.1:{port}/mcp");
-            tokio::spawn(async move {
-                if let Err(e) = axum::serve(mcp_listener, mcp_router).await {
+            let task = tokio::spawn(async move {
+                let shutdown = async {
+                    let _ = shutdown_rx.await;
+                    tracing::info!("Shutting down MCP server");
+                };
+                if let Err(e) = axum::serve(mcp_listener, mcp_router)
+                    .with_graceful_shutdown(shutdown)
+                    .await
+                {
                     tracing::error!("MCP server error: {e}");
                 }
             });
+            Some(McpServerHandle {
+                shutdown: shutdown_tx,
+                task,
+            })
         }
         Err(e) => {
             tracing::warn!("Could not start MCP server on port {port}: {e}");
+            None
         }
     }
 }

@@ -6,7 +6,7 @@ import { DesktopSettings, loadSettings, saveSettings } from './settings'
 
 let mainWindow: BrowserWindow | null = null
 let sidecar: SidecarInfo | null = null
-let settings: DesktopSettings = { mcpEnabled: false }
+let settings: DesktopSettings = { mcpEnabled: true }
 let activeDataDir = ''
 let isQuitting = false
 

@@ -3,7 +3,20 @@ import { app } from 'electron'
 import { join } from 'path'
 import { createInterface } from 'readline'
 
-export const DEFAULT_MCP_PORT = 26260
+const FALLBACK_MCP_PORT = 26260
+
+function parseMcpPort(raw: string | undefined): number {
+  if (!raw) {
+    return FALLBACK_MCP_PORT
+  }
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
+    return FALLBACK_MCP_PORT
+  }
+  return parsed
+}
+
+export const DEFAULT_MCP_PORT = parseMcpPort(process.env['FERRITE_MCP_PORT'])
 
 export interface SidecarInfo {
   port: number
