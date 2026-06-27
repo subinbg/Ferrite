@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md)
 [![Rust](https://img.shields.io/badge/Rust-2024-informational?logo=rust&logoColor=white&style=flat)](https://www.rust-lang.org/)
 [![Electron](https://img.shields.io/badge/Electron-React-informational?logo=electron&logoColor=white&style=flat)](https://www.electronjs.org/)
-[![Databases](https://img.shields.io/badge/Databases-PostgreSQL%20%C2%B7%20SQLite-informational?logo=postgresql&logoColor=white&style=flat)](#)
+[![Databases](https://img.shields.io/badge/Databases-PostgreSQL%20%C2%B7%20MySQL%20%C2%B7%20SQLite-informational?logo=postgresql&logoColor=white&style=flat)](#)
 
 Ferrite is a simple database studio: a desktop app (Electron + React) backed by a Rust sidecar, with a built-in read-only MCP server so AI agents can explore databases safely. All data stays on the local machine.
 

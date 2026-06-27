@@ -25,11 +25,12 @@ export function ConnectionForm({ onClose }: Props) {
   const getFormData = () => ({
     name: name || 'Untitled',
     dialect,
-    host: dialect === 'postgresql' ? (host || 'localhost') : undefined,
-    port: dialect === 'postgresql' ? (parseInt(port) || 5432) : undefined,
+    host: dialect !== 'sqlite' ? (host || 'localhost') : undefined,
+    port: dialect !== 'sqlite' ? (parseInt(port) || (dialect === 'mysql' ? 3306 : 5432)) : undefined,
     database_name: dbName || undefined,
-    username: dialect === 'postgresql' ? (username || 'postgres') : undefined,
-    password: dialect === 'postgresql' ? (password || undefined) : undefined,
+    username:
+      dialect !== 'sqlite' ? (username || (dialect === 'mysql' ? 'root' : 'postgres')) : undefined,
+    password: dialect !== 'sqlite' ? (password || undefined) : undefined,
     color
   })
 
@@ -97,12 +98,14 @@ export function ConnectionForm({ onClose }: Props) {
             <select
               value={dialect}
               onChange={(e) => {
-                setDialect(e.target.value as DatabaseDialect)
-                if (e.target.value === 'sqlite') setPort('')
+                const d = e.target.value as DatabaseDialect
+                setDialect(d)
+                setPort(d === 'sqlite' ? '' : d === 'mysql' ? '3306' : '5432')
               }}
               style={inputStyle}
             >
               <option value="postgresql">PostgreSQL</option>
+              <option value="mysql">MySQL</option>
               <option value="sqlite">SQLite</option>
             </select>
           </Field>

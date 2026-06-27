@@ -1,4 +1,4 @@
-export type DatabaseDialect = 'postgresql' | 'sqlite'
+export type DatabaseDialect = 'postgresql' | 'mysql' | 'sqlite'
 
 export interface Connection {
   id: string

@@ -1,6 +1,6 @@
 use crate::types::connection::DatabaseDialect;
 use sqlparser::ast::{Query, SetExpr, Statement};
-use sqlparser::dialect::{Dialect, PostgreSqlDialect, SQLiteDialect};
+use sqlparser::dialect::{Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect};
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, Tokenizer};
 
@@ -41,6 +41,7 @@ pub fn validate_readonly_sql(sql: &str, dialect: DatabaseDialect) -> Result<(), 
 fn dialect_impl(dialect: DatabaseDialect) -> Box<dyn Dialect> {
     match dialect {
         DatabaseDialect::PostgreSQL => Box::new(PostgreSqlDialect {}),
+        DatabaseDialect::MySQL => Box::new(MySqlDialect {}),
         DatabaseDialect::SQLite => Box::new(SQLiteDialect {}),
     }
 }
@@ -136,6 +137,7 @@ fn check_blocked_functions(
 fn is_blocked_function(name: &str, db: DatabaseDialect) -> bool {
     match db {
         DatabaseDialect::PostgreSQL => PG_BLOCKED_FUNCTIONS.contains(&name),
+        DatabaseDialect::MySQL => MYSQL_BLOCKED_FUNCTIONS.contains(&name),
         DatabaseDialect::SQLite => SQLITE_BLOCKED_FUNCTIONS.contains(&name),
     }
 }
@@ -161,6 +163,20 @@ const PG_BLOCKED_FUNCTIONS: &[&str] = &[
     "dblink_exec",
     "dblink_connect",
     "set_config",
+];
+
+/// MySQL functions that sleep/burn CPU, read files, or take advisory locks.
+/// (File writes via `INTO OUTFILE`/`DUMPFILE` are caught by the `SELECT ... INTO` check.)
+const MYSQL_BLOCKED_FUNCTIONS: &[&str] = &[
+    "sleep",
+    "benchmark",
+    "load_file",
+    "get_lock",
+    "release_lock",
+    "release_all_locks",
+    "master_pos_wait",
+    "sys_exec",
+    "sys_eval",
 ];
 
 /// SQLite functions that load native code or touch the filesystem.
@@ -206,6 +222,21 @@ mod tests {
 
     fn sqlite(sql: &str) -> Result<(), String> {
         validate_readonly_sql(sql, DatabaseDialect::SQLite)
+    }
+
+    fn mysql(sql: &str) -> Result<(), String> {
+        validate_readonly_sql(sql, DatabaseDialect::MySQL)
+    }
+
+    #[test]
+    fn test_mysql_dialect() {
+        assert!(mysql("SELECT 1").is_ok());
+        assert!(mysql("SELECT * FROM `users` WHERE id = 1").is_ok());
+        assert!(mysql("DELETE FROM t").is_err());
+        assert!(mysql("SELECT sleep(5)").is_err());
+        assert!(mysql("SELECT benchmark(1000000, md5('x'))").is_err());
+        assert!(mysql("SELECT load_file('/etc/passwd')").is_err());
+        assert!(mysql("SELECT * FROM t INTO OUTFILE '/tmp/x'").is_err());
     }
 
     #[test]

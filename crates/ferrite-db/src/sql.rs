@@ -8,6 +8,7 @@ use std::sync::LazyLock;
 #[derive(Clone, Copy)]
 pub enum LiteralStyle {
     Postgres,
+    Mysql,
     Sqlite,
 }
 
@@ -49,12 +50,16 @@ pub fn process_bind_variables(
 
 /// Convert a JSON value to a safe SQL literal for the given dialect.
 pub fn json_to_sql_literal(value: &serde_json::Value, style: LiteralStyle) -> String {
-    let quote = |s: &str| format!("'{}'", s.replace('\'', "''"));
+    let quote = |s: &str| match style {
+        // MySQL treats backslash as an escape character by default, so escape it as well.
+        LiteralStyle::Mysql => format!("'{}'", s.replace('\\', "\\\\").replace('\'', "''")),
+        _ => format!("'{}'", s.replace('\'', "''")),
+    };
     match value {
         serde_json::Value::Null => "NULL".to_string(),
         serde_json::Value::Bool(b) => match style {
             LiteralStyle::Postgres => if *b { "TRUE" } else { "FALSE" }.to_string(),
-            LiteralStyle::Sqlite => if *b { "1" } else { "0" }.to_string(),
+            LiteralStyle::Mysql | LiteralStyle::Sqlite => if *b { "1" } else { "0" }.to_string(),
         },
         serde_json::Value::Number(n) => n.to_string(),
         serde_json::Value::String(s) => quote(s),
@@ -64,11 +69,11 @@ pub fn json_to_sql_literal(value: &serde_json::Value, style: LiteralStyle) -> St
                     arr.iter().map(|v| json_to_sql_literal(v, style)).collect();
                 format!("ARRAY[{}]", items.join(", "))
             }
-            LiteralStyle::Sqlite => quote(&value.to_string()),
+            LiteralStyle::Mysql | LiteralStyle::Sqlite => quote(&value.to_string()),
         },
         serde_json::Value::Object(_) => match style {
             LiteralStyle::Postgres => format!("{}::jsonb", quote(&value.to_string())),
-            LiteralStyle::Sqlite => quote(&value.to_string()),
+            LiteralStyle::Mysql | LiteralStyle::Sqlite => quote(&value.to_string()),
         },
     }
 }

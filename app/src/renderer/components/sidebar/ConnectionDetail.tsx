@@ -91,7 +91,16 @@ export function ConnectionDetail({ connection, onClose }: Props) {
           <div style={{ height: 1, backgroundColor: 'var(--border)', margin: '4px 0' }} />
 
           {/* Read-only fields */}
-          <Row label="Type" value={connection.dialect === 'postgresql' ? 'PostgreSQL' : 'SQLite'} />
+          <Row
+            label="Type"
+            value={
+              connection.dialect === 'postgresql'
+                ? 'PostgreSQL'
+                : connection.dialect === 'mysql'
+                  ? 'MySQL'
+                  : 'SQLite'
+            }
+          />
           {connection.host && <Row label="Host" value={connection.host} />}
           {connection.port && <Row label="Port" value={String(connection.port)} />}
           {connection.database_name && <Row label="Database" value={connection.database_name} />}

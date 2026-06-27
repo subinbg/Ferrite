@@ -281,8 +281,16 @@ async fn build_connect_params(
 
     let dialect = match record.dialect.as_str() {
         "postgresql" => DatabaseDialect::PostgreSQL,
+        "mysql" => DatabaseDialect::MySQL,
         "sqlite" => DatabaseDialect::SQLite,
         other => return Err((StatusCode::BAD_REQUEST, format!("Unknown dialect: {other}"))),
+    };
+
+    // Dialect-specific fallbacks for fields the user left blank (SQLite ignores host/port/user).
+    let (default_port, default_db, default_user) = match dialect {
+        DatabaseDialect::PostgreSQL => (5432u16, "postgres", "postgres"),
+        DatabaseDialect::MySQL => (3306, "", "root"),
+        DatabaseDialect::SQLite => (0, "", ""),
     };
 
     // Decrypt password
@@ -307,13 +315,17 @@ async fn build_connect_params(
     Ok(ConnectParams {
         dialect,
         host: host.to_string(),
-        port: record.port.unwrap_or(5432) as u16,
+        port: record.port.unwrap_or(default_port as i64) as u16,
         database: record
             .database_name
             .as_deref()
-            .unwrap_or("postgres")
+            .unwrap_or(default_db)
             .to_string(),
-        username: record.username.as_deref().unwrap_or("postgres").to_string(),
+        username: record
+            .username
+            .as_deref()
+            .unwrap_or(default_user)
+            .to_string(),
         password,
         ssl_mode: record.ssl_mode.clone(),
     })

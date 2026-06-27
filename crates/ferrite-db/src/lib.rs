@@ -1,5 +1,6 @@
 pub mod driver;
 pub mod error;
+pub mod mysql;
 pub mod pool;
 pub mod postgres;
 mod sql;

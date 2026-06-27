@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "lowercase")]
 pub enum DatabaseDialect {
     PostgreSQL,
+    MySQL,
     SQLite,
 }
 
@@ -11,6 +12,7 @@ impl std::fmt::Display for DatabaseDialect {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::PostgreSQL => write!(f, "postgresql"),
+            Self::MySQL => write!(f, "mysql"),
             Self::SQLite => write!(f, "sqlite"),
         }
     }
