@@ -4,6 +4,7 @@ import { useTabsStore } from '../../stores/tabs'
 import { useResultsStore } from '../../stores/results'
 import { useExecuteQuery, useExplainQuery } from '../../api/queries'
 import { useFullSchema } from '../../api/schema'
+import { useConnections } from '../../api/connections'
 import { useThemeStore } from '../../stores/theme'
 import { setSchemaContext, registerCompletionProvider, type SchemaContext } from './completion'
 import { setupLinting } from './linting'
@@ -54,8 +55,15 @@ export function SqlEditor() {
   const setExplainResult = useResultsStore((s) => s.setExplainResult)
   const setError = useResultsStore((s) => s.setError)
 
-  // Schema for autocomplete — fetch whenever a connection is selected on the tab
-  const connectedId = activeTab?.connectionId ?? null
+  // Schema for autocomplete — only fetch when the tab's connection is actually connected.
+  // Loading a query from history sets a connectionId that may not be connected yet; fetching
+  // its schema would fail server-side with "Not connected".
+  const { data: connections } = useConnections()
+  const tabConnectionId = activeTab?.connectionId ?? null
+  const connectedId =
+    tabConnectionId && connections?.some((c) => c.id === tabConnectionId && c.connected)
+      ? tabConnectionId
+      : null
   const { data: fullSchema, error: schemaError } = useFullSchema(connectedId)
 
   const schemaContext = useMemo((): SchemaContext | null => {
