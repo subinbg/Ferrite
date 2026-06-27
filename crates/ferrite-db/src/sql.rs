@@ -1,5 +1,5 @@
-use ferrite_core::FerriteError;
-use ferrite_core::types::query::ColumnMeta;
+use crate::FerriteError;
+use crate::types::query::ColumnMeta;
 use futures::{Stream, TryStreamExt};
 use sqlx::{Column, Database, Row, TypeInfo};
 use std::collections::HashMap;

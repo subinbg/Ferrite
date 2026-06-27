@@ -9,11 +9,9 @@ name = "ferrite"
 path = "src/main.rs"
 
 [dependencies]
-ferrite-core.workspace = true
 ferrite-crypto.workspace = true
 ferrite-db.workspace = true
 ferrite-store.workspace = true
-ferrite-export.workspace = true
 ferrite-mcp.workspace = true
 
 tokio.workspace = true
@@ -29,14 +27,11 @@ uuid.workspace = true
 chrono.workspace = true
 anyhow.workspace = true
 clap.workspace = true
-rust-embed.workspace = true
 rand.workspace = true
 base64.workspace = true
 subtle = { workspace = true }
 tokio-stream.workspace = true
 futures.workspace = true
-mime_guess = "2"
-open = "5"
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }

@@ -1,28 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use uuid::Uuid;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QueryRequest {
-    pub connection_id: Uuid,
-    pub sql: String,
-    #[serde(default)]
-    pub bind_variables: HashMap<String, serde_json::Value>,
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-    #[serde(default)]
-    pub offset: usize,
-    #[serde(default = "default_timeout")]
-    pub timeout_seconds: u64,
-}
-
-fn default_limit() -> usize {
-    1000
-}
-
-fn default_timeout() -> u64 {
-    30
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnMeta {

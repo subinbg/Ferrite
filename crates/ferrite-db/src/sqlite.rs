@@ -1,12 +1,12 @@
+use crate::FerriteError;
 use crate::sql::{LiteralStyle, collect_rows, process_bind_variables};
-use ferrite_core::FerriteError;
-use ferrite_core::traits::Driver;
-use ferrite_core::types::connection::{ConnectParams, DatabaseDialect};
-use ferrite_core::types::query::{ExplainResult, ExplainSummary, QueryResult};
-use ferrite_core::types::schema::{ColumnInfo, TableInfo};
+use crate::traits::Driver;
+use crate::types::connection::{ConnectParams, DatabaseDialect};
+use crate::types::query::{ExplainResult, ExplainSummary, QueryResult};
+use crate::types::schema::{ColumnInfo, TableInfo};
 use sqlx::ConnectOptions;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use sqlx::Row;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Instant;

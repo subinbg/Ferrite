@@ -1,11 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/ferrite-core",
     "crates/ferrite-crypto",
     "crates/ferrite-db",
     "crates/ferrite-store",
-    "crates/ferrite-export",
     "crates/ferrite-mcp",
     "crates/ferrite-server",
 ]
@@ -19,11 +17,9 @@ repository = "https://github.com/subinbg/Ferrite"
 
 [workspace.dependencies]
 # Internal crates
-ferrite-core = { path = "crates/ferrite-core" }
 ferrite-crypto = { path = "crates/ferrite-crypto" }
 ferrite-db = { path = "crates/ferrite-db" }
 ferrite-store = { path = "crates/ferrite-store" }
-ferrite-export = { path = "crates/ferrite-export" }
 ferrite-mcp = { path = "crates/ferrite-mcp" }
 
 # Async runtime
@@ -57,10 +53,6 @@ rand = "0.8"
 zeroize = { version = "1.8", features = ["derive"] }
 subtle = "2.6"
 
-# Export
-csv = "1.3"
-rust_xlsxwriter = "0.79"
-
 # Error handling
 thiserror = "2.0"
 anyhow = "1.0"
@@ -74,9 +66,6 @@ base64 = "0.22"
 bytes = "1"
 futures = "0.3"
 tokio-stream = "0.1"
-
-# Embedding
-rust-embed = { version = "8", features = ["interpolate-folder-path"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

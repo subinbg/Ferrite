@@ -1,6 +1,6 @@
 pub mod app;
 pub mod auth;
-pub mod embedded;
+pub mod dto;
 pub mod routes;
 pub mod state;
 
@@ -16,7 +16,6 @@ use tokio::task::JoinHandle;
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     pub port: u16,
-    pub standalone: bool,
     pub dev: bool,
     pub db_file: PathBuf,
     pub mcp_port: Option<u16>,
@@ -39,16 +38,10 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
     let store = AppStore::open(&db_path)?;
     tracing::info!("Opened app database");
 
-    let state = state::AppState::new(token.clone(), store, config.standalone);
+    let state = state::AppState::new(token.clone(), store);
     let shutdown_state = state.clone();
     let mcp_state_ref = state.clone();
-    let router = app::create_router(
-        state,
-        RouterConfig {
-            standalone: config.standalone,
-            dev: config.dev,
-        },
-    );
+    let router = app::create_router(state, RouterConfig { dev: config.dev });
 
     let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
     let listener = TcpListener::bind(addr).await?;
@@ -64,16 +57,7 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
         None
     };
 
-    if config.standalone {
-        let url = format!("http://127.0.0.1:{}", actual_addr.port());
-        tracing::info!("Ferrite running at {url}");
-        eprintln!("\n  Ferrite Database Studio\n  {url}\n");
-        if let Err(e) = open::that(&url) {
-            tracing::warn!("Could not open browser: {e}");
-        }
-    } else {
-        tracing::info!("Ferrite server listening on {}", actual_addr);
-    }
+    tracing::info!("Ferrite server listening on {}", actual_addr);
 
     axum::serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())
@@ -171,18 +155,12 @@ mod tests {
 
     fn test_state() -> state::AppState {
         let store = AppStore::open_memory().unwrap();
-        state::AppState::new("test-token".to_string(), store, false)
+        state::AppState::new("test-token".to_string(), store)
     }
 
     #[tokio::test]
     async fn test_health_endpoint() {
-        let app = app::create_router(
-            test_state(),
-            RouterConfig {
-                standalone: false,
-                dev: false,
-            },
-        );
+        let app = app::create_router(test_state(), RouterConfig { dev: false });
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
 
@@ -206,13 +184,7 @@ mod tests {
     async fn test_vault_setup_and_connection_crud() {
         let state = test_state();
         let token = state.token.to_string();
-        let app = app::create_router(
-            state,
-            RouterConfig {
-                standalone: false,
-                dev: false,
-            },
-        );
+        let app = app::create_router(state, RouterConfig { dev: false });
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
 

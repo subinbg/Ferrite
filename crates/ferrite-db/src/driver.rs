@@ -1,8 +1,8 @@
-use ferrite_core::FerriteError;
-use ferrite_core::traits::Driver;
-use ferrite_core::types::connection::{ConnectParams, DatabaseDialect};
-use ferrite_core::types::query::{ExplainResult, QueryResult};
-use ferrite_core::types::schema::{ColumnInfo, TableInfo};
+use crate::FerriteError;
+use crate::traits::Driver;
+use crate::types::connection::{ConnectParams, DatabaseDialect};
+use crate::types::query::{ExplainResult, QueryResult};
+use crate::types::schema::{ColumnInfo, TableInfo};
 use std::collections::HashMap;
 
 use crate::postgres::PostgresDriver;

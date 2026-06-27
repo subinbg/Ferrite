@@ -1,8 +1,8 @@
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
-use ferrite_core::types::query::QueryRequest;
 use ferrite_store::activity::NewActivity;
 use ferrite_store::history::NewHistoryEntry;
 
+use crate::dto::QueryRequest;
 use crate::state::AppState;
 
 pub async fn execute_query(

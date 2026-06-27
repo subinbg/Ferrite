@@ -4,9 +4,8 @@ use axum::{
     http::{StatusCode, header},
     response::IntoResponse,
 };
-use ferrite_core::types::export::{ExportFormat, ExportRequest};
-use ferrite_export::{csv_export, excel_export, json_export};
 
+use crate::dto::ExportRequest;
 use crate::state::AppState;
 
 pub async fn export_data(
@@ -30,58 +29,33 @@ pub async fn export_data(
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
-    let delimiter_byte = req
-        .options
-        .delimiter
-        .as_deref()
-        .and_then(|d| d.as_bytes().first().copied())
-        .unwrap_or(b',');
+    let col_names: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
+    let objects: Vec<serde_json::Value> = result
+        .rows
+        .iter()
+        .map(|row| row_to_object(&col_names, row))
+        .collect();
+    let bytes = serde_json::to_vec_pretty(&objects)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let include_headers = req.options.include_headers.unwrap_or(true);
-    let sheet_name = req
-        .options
-        .sheet_name
-        .clone()
-        .unwrap_or_else(|| "Query Results".to_string());
-
-    let (bytes, content_type, filename) = match req.format {
-        ExportFormat::Csv => {
-            let opts = csv_export::CsvOptions {
-                delimiter: delimiter_byte,
-                include_headers,
-            };
-            let data = csv_export::export_csv(&result, &opts)
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-            (data, "text/csv; charset=utf-8", "export.csv")
-        }
-        ExportFormat::Json => {
-            let data = json_export::export_json(&result, &json_export::JsonFormat::Array)
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-            (data, "application/json", "export.json")
-        }
-        ExportFormat::JsonLines => {
-            let data = json_export::export_json(&result, &json_export::JsonFormat::Lines)
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-            (data, "application/x-ndjson", "export.jsonl")
-        }
-        ExportFormat::Excel => {
-            let opts = excel_export::ExcelOptions { sheet_name };
-            let data = excel_export::export_excel(&result, &opts)
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-            (
-                data,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "export.xlsx",
-            )
-        }
-    };
-
-    let disposition = format!("attachment; filename=\"{filename}\"");
     Ok((
         [
-            (header::CONTENT_TYPE, content_type.to_string()),
-            (header::CONTENT_DISPOSITION, disposition),
+            (header::CONTENT_TYPE, "application/json".to_string()),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=\"export.json\"".to_string(),
+            ),
         ],
         bytes,
     ))
+}
+
+/// Build a JSON object keyed by column name for a single result row.
+fn row_to_object(columns: &[&str], row: &[serde_json::Value]) -> serde_json::Value {
+    let mut map = serde_json::Map::with_capacity(columns.len());
+    for (i, col) in columns.iter().enumerate() {
+        let val = row.get(i).cloned().unwrap_or(serde_json::Value::Null);
+        map.insert(col.to_string(), val);
+    }
+    serde_json::Value::Object(map)
 }

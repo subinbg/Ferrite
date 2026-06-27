@@ -18,7 +18,6 @@ use axum::routing::delete;
 
 #[derive(Debug, Clone, Copy)]
 pub struct RouterConfig {
-    pub standalone: bool,
     pub dev: bool,
 }
 
@@ -98,12 +97,7 @@ pub fn create_router(state: AppState, config: RouterConfig) -> Router {
         .route("/activities", get(activity::list_activities))
         .route("/activities/{id}", delete(activity::delete_activity));
 
-    let mut router = Router::new().nest("/api", api_routes);
-
-    // In standalone mode, serve embedded frontend assets
-    if config.standalone {
-        router = router.fallback(get(crate::embedded::serve_frontend));
-    }
+    let router = Router::new().nest("/api", api_routes);
 
     router
         .layer(middleware::from_fn_with_state(

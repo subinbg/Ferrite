@@ -8,8 +8,6 @@ export interface FerriteApi {
   downloadExport: (body: {
     connection_id: string
     sql: string
-    format: string
-    options?: Record<string, unknown>
   }) => Promise<{ bytes: Uint8Array; contentType: string; filename: string }>
   getDesktopState: () => Promise<DesktopState>
   switchDatabase: () => Promise<void>

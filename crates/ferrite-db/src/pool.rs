@@ -1,5 +1,5 @@
-use ferrite_core::FerriteError;
-use ferrite_core::types::connection::ConnectParams;
+use crate::FerriteError;
+use crate::types::connection::ConnectParams;
 use std::collections::HashMap;
 use uuid::Uuid;
 

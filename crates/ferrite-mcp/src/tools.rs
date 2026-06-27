@@ -1,6 +1,6 @@
 use crate::state::McpState;
-use crate::validate::validate_readonly_sql;
 use anyhow::Result;
+use ferrite_db::validate::validate_readonly_sql;
 use ferrite_store::activity::NewActivity;
 use std::collections::HashMap;
 use std::time::Instant;

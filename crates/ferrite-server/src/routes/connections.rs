@@ -4,10 +4,10 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use ferrite_core::types::connection::{
-    ConnectionCreate, ConnectionTestResult, ConnectionUpdate, DatabaseDialect,
-};
+use ferrite_db::types::connection::DatabaseDialect;
 use ferrite_store::connections::{ConnectionPatch, NewConnection};
+
+use crate::dto::{ConnectionCreate, ConnectionTestResult, ConnectionUpdate};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -147,7 +147,10 @@ pub async fn update_connection(
         (None, None)
     };
 
-    let ssl_mode = req.ssl_mode.as_ref().map(|s| format!("{s:?}").to_lowercase());
+    let ssl_mode = req
+        .ssl_mode
+        .as_ref()
+        .map(|s| format!("{s:?}").to_lowercase());
     let store = state.store.lock().await;
     let record = store
         .update_connection(
@@ -263,8 +266,8 @@ pub async fn disconnect_connection(
 async fn build_connect_params(
     state: &AppState,
     id: &str,
-) -> Result<ferrite_core::types::connection::ConnectParams, (StatusCode, String)> {
-    use ferrite_core::types::connection::ConnectParams;
+) -> Result<ferrite_db::types::connection::ConnectParams, (StatusCode, String)> {
+    use ferrite_db::types::connection::ConnectParams;
 
     let vault = state.vault.read().await;
     let vault = vault

@@ -4,7 +4,7 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use ferrite_core::types::schema::ColumnInfo;
+use ferrite_db::types::schema::ColumnInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -103,7 +103,7 @@ pub async fn full_schema(
 
     #[derive(Serialize)]
     struct FullSchema {
-        tables: Vec<ferrite_core::types::schema::TableInfo>,
+        tables: Vec<ferrite_db::types::schema::TableInfo>,
         columns_by_table: HashMap<String, Vec<ColumnInfo>>,
     }
 

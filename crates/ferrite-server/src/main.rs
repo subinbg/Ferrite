@@ -8,10 +8,6 @@ struct Cli {
     #[arg(short, long, default_value = "0")]
     port: u16,
 
-    /// Run in standalone mode (opens browser)
-    #[arg(long)]
-    standalone: bool,
-
     /// Enable dev mode (CORS for Vite dev server)
     #[arg(long)]
     dev: bool,
@@ -38,7 +34,6 @@ async fn main() -> anyhow::Result<()> {
 
     ferrite_server::run(ServerConfig {
         port: cli.port,
-        standalone: cli.standalone,
         dev: cli.dev,
         db_file: cli.db_file,
         mcp_port: cli.mcp_port,

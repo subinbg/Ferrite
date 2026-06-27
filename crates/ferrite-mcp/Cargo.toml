@@ -5,7 +5,6 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-ferrite-core.workspace = true
 ferrite-db.workspace = true
 tokio.workspace = true
 serde.workspace = true
@@ -16,7 +15,6 @@ uuid.workspace = true
 axum.workspace = true
 rmcp = { version = "1.2", features = ["server", "transport-streamable-http-server", "macros"] }
 schemars = "1"
-sqlparser = "0.61"
 
 # Shared state types
 [dependencies.ferrite-crypto]

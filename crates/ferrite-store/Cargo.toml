@@ -5,7 +5,6 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-ferrite-core.workspace = true
 rusqlite.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true

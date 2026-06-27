@@ -17,13 +17,6 @@ pub async fn auth_middleware(
         return Ok(next.run(request).await);
     }
 
-    // In standalone mode, skip token auth.
-    // SECURITY: This is safe because the server binds to 127.0.0.1 only (main.rs).
-    // No external network access is possible. The frontend runs in the same browser.
-    if state.standalone {
-        return Ok(next.run(request).await);
-    }
-
     // Only enforce auth on /api/ and /ws/ routes
     let path = request.uri().path();
     if !path.starts_with("/api/") && !path.starts_with("/ws/") {

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron'
 import { dirname, join } from 'path'
-import { mkdir } from 'fs/promises'
+import { mkdirSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import { startSidecar, stopSidecar, SidecarInfo, mcpPort } from './sidecar'
 
@@ -20,8 +20,6 @@ interface SidecarRequest {
 interface ExportRequestBody {
   connection_id: string
   sql: string
-  format: string
-  options?: Record<string, unknown>
 }
 
 function getDesktopState() {
@@ -34,6 +32,20 @@ function getDesktopState() {
 
 function cacheDirFor(dbPath: string): string {
   return join(dirname(dbPath), '.ferrite-cache')
+}
+
+// Point Chromium's session/disk cache at a Ferrite-owned directory. This MUST run before
+// `app.whenReady()` — switching `sessionData` after the app is ready corrupts the on-disk
+// cache structure (the "wrong file structure on disk" / "Unable to create cache" errors).
+function configureSessionCache(): void {
+  const dbFile = process.env['FERRITE_DB_FILE']
+  if (!dbFile) {
+    // First-run flow resolves the DB via a dialog after ready; keep Electron's default path.
+    return
+  }
+  const cacheDir = cacheDirFor(dbFile)
+  mkdirSync(cacheDir, { recursive: true })
+  app.setPath('sessionData', cacheDir)
 }
 
 const DB_FILTERS = [
@@ -321,10 +333,6 @@ async function createWindow(): Promise<void> {
   }
   activeDbPath = dbPath
 
-  const cacheDir = cacheDirFor(dbPath)
-  await mkdir(cacheDir, { recursive: true })
-  app.setPath('sessionData', cacheDir)
-
   try {
     await startCurrentSidecar()
   } catch (err) {
@@ -389,6 +397,7 @@ async function createWindow(): Promise<void> {
   }
 }
 
+configureSessionCache()
 app.whenReady().then(createWindow)
 
 app.on('window-all-closed', () => {

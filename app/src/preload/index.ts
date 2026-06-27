@@ -13,8 +13,6 @@ const ferriteApi = {
   downloadExport: (body: {
     connection_id: string
     sql: string
-    format: string
-    options?: Record<string, unknown>
   }): Promise<{ bytes: Uint8Array; contentType: string; filename: string }> =>
     ipcRenderer.invoke('ferrite:download-export', body),
   getDesktopState: (): Promise<{
